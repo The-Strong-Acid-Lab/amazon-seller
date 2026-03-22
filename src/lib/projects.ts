@@ -3,11 +3,15 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server";
 export async function getProjectPageData(projectId: string) {
   const supabase = createAdminSupabaseClient();
 
-  const [{ data: project, error: projectError }, { data: reviews, error: reviewsError }] =
+  const [
+    { data: project, error: projectError },
+    { data: reviews, error: reviewsError },
+    { data: projectProducts, error: productsError },
+  ] =
     await Promise.all([
       supabase
         .from("projects")
-        .select("id, name, target_market, target_asin, status, created_at")
+        .select("id, name, product_name, target_market, target_asin, status, created_at")
         .eq("id", projectId)
         .single(),
       supabase
@@ -17,6 +21,11 @@ export async function getProjectPageData(projectId: string) {
         )
         .eq("project_id", projectId)
         .order("review_date", { ascending: false }),
+      supabase
+        .from("project_products")
+        .select("id, role, name, asin, product_url, market, is_launched")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: true }),
     ]);
 
   if (projectError || !project) {
@@ -25,6 +34,10 @@ export async function getProjectPageData(projectId: string) {
 
   if (reviewsError) {
     throw new Error(reviewsError.message);
+  }
+
+  if (productsError) {
+    throw new Error(productsError.message);
   }
 
   const { data: latestReport, error: reportError } = await supabase
@@ -44,6 +57,7 @@ export async function getProjectPageData(projectId: string) {
   return {
     project,
     reviews: reviews ?? [],
+    projectProducts: projectProducts ?? [],
     latestReport,
   };
 }

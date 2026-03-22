@@ -40,6 +40,11 @@ export default async function ProjectPage({
     const { projectId } = await params;
     const data = await getProjectPageData(projectId);
     const report = asReport(data.latestReport);
+    const targetProduct =
+      data.projectProducts.find((product) => product.role === "target") ?? null;
+    const competitorProducts = data.projectProducts.filter(
+      (product) => product.role === "competitor",
+    );
 
     return (
       <main className="min-h-screen bg-stone-50 px-4 py-8 sm:px-6 lg:px-10">
@@ -68,8 +73,55 @@ export default async function ProjectPage({
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <MetricCard label="项目状态" value={data.project.status} />
             <MetricCard label="评论数量" value={String(data.reviews.length)} />
-            <MetricCard label="目标市场" value={data.project.target_market ?? "-"} />
-            <MetricCard label="目标 ASIN" value={data.project.target_asin ?? "-"} />
+            <MetricCard label="目标市场" value={targetProduct?.market ?? data.project.target_market ?? "-"} />
+            <MetricCard label="竞品数量" value={String(competitorProducts.length)} />
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+            <Card className="rounded-[2rem]">
+              <CardHeader>
+                <CardTitle>目标商品</CardTitle>
+                <CardDescription>
+                  这个项目最终是为了给这个商品做页面与转化决策。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                <ProjectProductCard
+                  asin={targetProduct?.asin ?? null}
+                  isLaunched={targetProduct?.is_launched ?? false}
+                  market={targetProduct?.market ?? null}
+                  name={targetProduct?.name ?? data.project.product_name ?? "未命名目标商品"}
+                  productUrl={targetProduct?.product_url ?? null}
+                  role="target"
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-[2rem]">
+              <CardHeader>
+                <CardTitle>竞品来源</CardTitle>
+                <CardDescription>
+                  这些商品的评论和 listing 会作为目标商品的参考证据。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                {competitorProducts.length > 0 ? (
+                  competitorProducts.map((product) => (
+                    <ProjectProductCard
+                      key={product.id}
+                      asin={product.asin}
+                      isLaunched={product.is_launched}
+                      market={product.market}
+                      name={product.name ?? "未命名竞品"}
+                      productUrl={product.product_url}
+                      role="competitor"
+                    />
+                  ))
+                ) : (
+                  <p className="text-sm text-stone-500">当前还没有挂载竞品商品。</p>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
           {report ? (
@@ -242,6 +294,47 @@ export default async function ProjectPage({
   } catch {
     notFound();
   }
+}
+
+function ProjectProductCard({
+  role,
+  name,
+  asin,
+  productUrl,
+  market,
+  isLaunched,
+}: {
+  role: "target" | "competitor";
+  name: string;
+  asin: string | null;
+  productUrl: string | null;
+  market: string | null;
+  isLaunched: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-stone-200 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge className="rounded-full" variant={role === "target" ? "default" : "outline"}>
+          {role === "target" ? "target" : "competitor"}
+        </Badge>
+        <Badge className="rounded-full" variant="secondary">
+          {isLaunched ? "已上线" : "未上线"}
+        </Badge>
+      </div>
+      <p className="mt-3 text-base font-semibold text-stone-950">{name}</p>
+      <div className="mt-3 grid gap-2 text-sm text-stone-700">
+        <p>
+          <span className="font-medium text-stone-900">ASIN:</span> {asin ?? "-"}
+        </p>
+        <p>
+          <span className="font-medium text-stone-900">市场:</span> {market ?? "-"}
+        </p>
+        <p className="break-all">
+          <span className="font-medium text-stone-900">URL:</span> {productUrl ?? "-"}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function MetricCard({ label, value }: { label: string; value: string }) {

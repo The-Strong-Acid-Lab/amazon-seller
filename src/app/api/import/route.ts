@@ -22,6 +22,16 @@ export async function POST(request: Request) {
 
     if (mode === "import") {
       const projectName = String(formData.get("projectName") ?? "").trim();
+      const targetProductName = String(formData.get("targetProductName") ?? "").trim();
+      const targetProductAsin = String(formData.get("targetProductAsin") ?? "").trim();
+      const targetProductUrl = String(formData.get("targetProductUrl") ?? "").trim();
+      const targetMarket = String(formData.get("targetMarket") ?? "").trim();
+      const targetIsLaunched = String(formData.get("targetIsLaunched") ?? "true") === "true";
+      const reviewSourceRole = String(formData.get("reviewSourceRole") ?? "competitor").trim();
+      const reviewSourceName = String(formData.get("reviewSourceName") ?? "").trim();
+      const reviewSourceAsin = String(formData.get("reviewSourceAsin") ?? "").trim();
+      const reviewSourceUrl = String(formData.get("reviewSourceUrl") ?? "").trim();
+      const reviewSourceMarket = String(formData.get("reviewSourceMarket") ?? "").trim();
 
       if (!projectName) {
         return NextResponse.json(
@@ -30,8 +40,41 @@ export async function POST(request: Request) {
         );
       }
 
+      if (!targetProductName) {
+        return NextResponse.json(
+          { error: "Target product name is required before importing to Supabase." },
+          { status: 400 },
+        );
+      }
+
+      if (reviewSourceRole !== "target" && reviewSourceRole !== "competitor") {
+        return NextResponse.json(
+          { error: "Review source role must be target or competitor." },
+          { status: 400 },
+        );
+      }
+
+      if (!reviewSourceName) {
+        return NextResponse.json(
+          { error: "Review source product name is required before importing." },
+          { status: 400 },
+        );
+      }
+
       const parsed = await parseReviewImport(file.name, buffer);
-      const persisted = await persistImportedReviews(parsed, { projectName });
+      const persisted = await persistImportedReviews(parsed, {
+        projectName,
+        targetProductName,
+        targetProductAsin: targetProductAsin || undefined,
+        targetProductUrl: targetProductUrl || undefined,
+        targetMarket: targetMarket || undefined,
+        targetIsLaunched,
+        reviewSourceRole,
+        reviewSourceName,
+        reviewSourceAsin: reviewSourceAsin || undefined,
+        reviewSourceUrl: reviewSourceUrl || undefined,
+        reviewSourceMarket: reviewSourceMarket || undefined,
+      });
       const preview = await createImportPreview(file.name, buffer);
 
       return NextResponse.json({

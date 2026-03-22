@@ -3,6 +3,16 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 type PersistImportOptions = {
   projectName: string;
+  targetProductName: string;
+  targetProductAsin?: string;
+  targetProductUrl?: string;
+  targetMarket?: string;
+  targetIsLaunched: boolean;
+  reviewSourceRole: "target" | "competitor";
+  reviewSourceName: string;
+  reviewSourceAsin?: string;
+  reviewSourceUrl?: string;
+  reviewSourceMarket?: string;
 };
 
 export async function persistImportedReviews(
@@ -15,9 +25,17 @@ export async function persistImportedReviews(
     .from("projects")
     .insert({
       name: options.projectName,
-      target_asin: parsed.reviews.find((review) => review.asin)?.asin ?? null,
+      product_name: options.targetProductName,
+      target_asin:
+        options.targetProductAsin ??
+        (options.reviewSourceRole === "target"
+          ? options.reviewSourceAsin ?? parsed.reviews.find((review) => review.asin)?.asin ?? null
+          : null),
       target_market:
-        Object.keys(parsed.stats.countryDistribution)[0] ?? "unknown",
+        options.targetMarket ??
+        options.reviewSourceMarket ??
+        Object.keys(parsed.stats.countryDistribution)[0] ??
+        "unknown",
       status: "ready",
     })
     .select("id")
@@ -27,10 +45,61 @@ export async function persistImportedReviews(
     throw new Error(projectError?.message ?? "Failed to create project");
   }
 
+  const { data: targetProduct, error: targetProductError } = await supabase
+    .from("project_products")
+    .insert({
+      project_id: project.id,
+      role: "target",
+      name: options.targetProductName,
+      asin: options.targetProductAsin ?? null,
+      product_url: options.targetProductUrl ?? null,
+      market: options.targetMarket ?? null,
+      is_launched: options.targetIsLaunched,
+    })
+    .select("id")
+    .single();
+
+  if (targetProductError || !targetProduct) {
+    throw new Error(targetProductError?.message ?? "Failed to create target product");
+  }
+
+  let reviewSourceProductId = targetProduct.id;
+
+  if (options.reviewSourceRole === "competitor") {
+    const { data: competitorProduct, error: competitorProductError } = await supabase
+      .from("project_products")
+      .insert({
+        project_id: project.id,
+        role: "competitor",
+        name: options.reviewSourceName,
+        asin:
+          options.reviewSourceAsin ??
+          parsed.reviews.find((review) => review.asin)?.asin ??
+          null,
+        product_url: options.reviewSourceUrl ?? null,
+        market:
+          options.reviewSourceMarket ??
+          Object.keys(parsed.stats.countryDistribution)[0] ??
+          null,
+        is_launched: true,
+      })
+      .select("id")
+      .single();
+
+    if (competitorProductError || !competitorProduct) {
+      throw new Error(
+        competitorProductError?.message ?? "Failed to create competitor product",
+      );
+    }
+
+    reviewSourceProductId = competitorProduct.id;
+  }
+
   const { data: importFile, error: importFileError } = await supabase
     .from("import_files")
     .insert({
       project_id: project.id,
+      project_product_id: reviewSourceProductId,
       file_name: parsed.fileName,
       file_type: parsed.fileType,
       source_kind: "review_export",
@@ -52,6 +121,7 @@ export async function persistImportedReviews(
       .from("reviews")
       .insert({
         project_id: project.id,
+        project_product_id: reviewSourceProductId,
         import_file_id: importFile.id,
         asin: review.asin || null,
         model: review.model || null,
@@ -108,6 +178,8 @@ export async function persistImportedReviews(
 
   return {
     projectId: project.id,
+    targetProductId: targetProduct.id,
+    reviewSourceProductId,
     importFileId: importFile.id,
     importedReviews,
   };

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useForm } from "react-hook-form";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import type { ImportPreview } from "@/lib/review-import";
 import { cn } from "@/lib/utils";
 
@@ -42,9 +49,25 @@ type ImportResponse = ImportPreview & {
   error?: string;
   persisted?: {
     projectId: string;
+    targetProductId: string;
+    reviewSourceProductId: string;
     importFileId: string;
     importedReviews: number;
   };
+};
+
+type ImportFormValues = {
+  projectName: string;
+  targetProductName: string;
+  targetProductAsin: string;
+  targetProductUrl: string;
+  targetMarket: string;
+  targetIsLaunched: boolean;
+  reviewSourceRole: "target" | "competitor";
+  reviewSourceName: string;
+  reviewSourceAsin: string;
+  reviewSourceUrl: string;
+  reviewSourceMarket: string;
 };
 
 export function ImportWorkbench() {
@@ -55,7 +78,40 @@ export function ImportWorkbench() {
   const [savedProjectId, setSavedProjectId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [projectName, setProjectName] = useState("");
+  const {
+    register,
+    handleSubmit: handleFormSubmit,
+    setValue,
+    trigger,
+    watch,
+    formState: { errors },
+  } = useForm<ImportFormValues>({
+    defaultValues: {
+      projectName: "",
+      targetProductName: "",
+      targetProductAsin: "",
+      targetProductUrl: "",
+      targetMarket: "US",
+      targetIsLaunched: false,
+      reviewSourceRole: "competitor",
+      reviewSourceName: "",
+      reviewSourceAsin: "",
+      reviewSourceUrl: "",
+      reviewSourceMarket: "US",
+    },
+  });
+
+  const projectName = watch("projectName");
+  const targetProductName = watch("targetProductName");
+  const targetProductAsin = watch("targetProductAsin");
+  const targetProductUrl = watch("targetProductUrl");
+  const targetMarket = watch("targetMarket");
+  const targetIsLaunched = watch("targetIsLaunched");
+  const reviewSourceRole = watch("reviewSourceRole");
+  const reviewSourceName = watch("reviewSourceName");
+  const reviewSourceAsin = watch("reviewSourceAsin");
+  const reviewSourceUrl = watch("reviewSourceUrl");
+  const reviewSourceMarket = watch("reviewSourceMarket");
 
   useEffect(() => {
     if (!file) {
@@ -64,12 +120,34 @@ export function ImportWorkbench() {
 
     const suggestedName = file.name.replace(/\.[^.]+$/, "").trim();
 
-    setProjectName((currentName) => currentName || suggestedName);
-  }, [file]);
+    if (!projectName) {
+      setValue("projectName", suggestedName, { shouldDirty: true });
+    }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+    if (!reviewSourceName) {
+      setValue("reviewSourceName", suggestedName, { shouldDirty: true });
+    }
+  }, [file, projectName, reviewSourceName, setValue]);
 
+  useEffect(() => {
+    if (reviewSourceRole !== "target") {
+      return;
+    }
+
+    setValue("reviewSourceName", targetProductName);
+    setValue("reviewSourceAsin", targetProductAsin);
+    setValue("reviewSourceUrl", targetProductUrl);
+    setValue("reviewSourceMarket", targetMarket);
+  }, [
+    reviewSourceRole,
+    setValue,
+    targetMarket,
+    targetProductAsin,
+    targetProductName,
+    targetProductUrl,
+  ]);
+
+  async function handlePreview() {
     if (!file) {
       setError("先选择一个 Excel 或 CSV 文件。");
       return;
@@ -114,8 +192,20 @@ export function ImportWorkbench() {
       return;
     }
 
-    if (!projectName.trim()) {
-      setError("请先填写项目名称。");
+    const fieldsToValidate: Array<keyof ImportFormValues> = [
+      "projectName",
+      "targetProductName",
+      "targetMarket",
+    ];
+
+    if (reviewSourceRole === "competitor") {
+      fieldsToValidate.push("reviewSourceName", "reviewSourceMarket");
+    }
+
+    const isValid = await trigger(fieldsToValidate, { shouldFocus: true });
+
+    if (!isValid) {
+      setError("请先补全标红的必填字段。");
       return;
     }
 
@@ -129,6 +219,36 @@ export function ImportWorkbench() {
       formData.append("file", file);
       formData.append("mode", "import");
       formData.append("projectName", projectName.trim());
+      formData.append("targetProductName", targetProductName.trim());
+      formData.append("targetProductAsin", targetProductAsin.trim());
+      formData.append("targetProductUrl", targetProductUrl.trim());
+      formData.append("targetMarket", targetMarket.trim());
+      formData.append("targetIsLaunched", String(targetIsLaunched));
+      formData.append("reviewSourceRole", reviewSourceRole);
+      formData.append(
+        "reviewSourceName",
+        reviewSourceRole === "target"
+          ? (targetProductName || reviewSourceName).trim()
+          : reviewSourceName.trim(),
+      );
+      formData.append(
+        "reviewSourceAsin",
+        reviewSourceRole === "target"
+          ? (targetProductAsin || reviewSourceAsin).trim()
+          : reviewSourceAsin.trim(),
+      );
+      formData.append(
+        "reviewSourceUrl",
+        reviewSourceRole === "target"
+          ? (targetProductUrl || reviewSourceUrl).trim()
+          : reviewSourceUrl.trim(),
+      );
+      formData.append(
+        "reviewSourceMarket",
+        reviewSourceRole === "target"
+          ? (targetMarket || reviewSourceMarket).trim()
+          : reviewSourceMarket.trim(),
+      );
 
       const response = await fetch("/api/import", {
         method: "POST",
@@ -172,37 +292,240 @@ export function ImportWorkbench() {
         </CardHeader>
 
         <CardContent>
-          <form className="grid gap-5" onSubmit={handleSubmit}>
-            <div className="grid gap-3 rounded-3xl border border-dashed border-stone-300 bg-stone-50 p-5">
-              <div className="grid gap-1">
-                <p className="text-sm font-medium text-stone-900">
-                  支持 Excel `.xlsx` 和 `.csv`
-                </p>
-                <CardDescription className="leading-6">
-                  第一版先确保我们能稳定读懂第三方评论导出文件，再进入数据库入库和分析。
-                </CardDescription>
-              </div>
-              <Input
-                accept={ACCEPTED_FILE_TYPES}
-                className="cursor-pointer border-stone-200 bg-white file:mr-4 file:rounded-md file:bg-stone-100 file:px-3 file:py-1.5 hover:file:bg-stone-200"
-                type="file"
-                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              />
-            </div>
-
-            <div className="grid gap-2">
-              <div className="grid gap-1">
-                <p className="text-sm font-medium text-stone-900">分析项目名称</p>
-                <p className="text-xs leading-5 text-stone-500">
-                  这是你在系统内部给这次导入起的名字，不是 Supabase 后台里的项目名称。
-                </p>
-              </div>
+          <form className="grid gap-5" onSubmit={handleFormSubmit(handlePreview)}>
+            <SectionCard
+              description="这是这次商品研究任务的名字。后面你会在项目列表和详情页里用它区分不同商品。"
+              title="项目名称"
+            >
               <Input
                 placeholder="例如: meditation-chair-us-2025-11"
-                value={projectName}
-                onChange={(event) => setProjectName(event.target.value)}
+                {...register("projectName", {
+                  required: "请填写项目名称。",
+                })}
+                aria-invalid={Boolean(errors.projectName)}
               />
-            </div>
+              <FieldError message={errors.projectName?.message} />
+            </SectionCard>
+
+            <SectionCard
+              description="一个项目只服务一个目标商品。它可以已经上线，也可以还在筹划中。"
+              title="目标商品"
+            >
+              <div className="grid gap-4 md:grid-cols-2">
+                <FieldBlock
+                  error={errors.targetProductName?.message}
+                  label="目标商品名称"
+                  required
+                >
+                  <Input
+                    placeholder="例如: 冥想椅首发款"
+                    {...register("targetProductName", {
+                      required: "请填写目标商品名称。",
+                    })}
+                    aria-invalid={Boolean(errors.targetProductName)}
+                  />
+                </FieldBlock>
+                <FieldBlock
+                  error={errors.targetMarket?.message}
+                  label="目标市场"
+                  required
+                >
+                  <Input
+                    placeholder="例如: US"
+                    {...register("targetMarket", {
+                      required: "请填写目标市场。",
+                    })}
+                    aria-invalid={Boolean(errors.targetMarket)}
+                  />
+                </FieldBlock>
+                <FieldBlock label="目标商品 ASIN（可空）">
+                  <Input
+                    placeholder="已上架再填"
+                    {...register("targetProductAsin")}
+                  />
+                </FieldBlock>
+                <FieldBlock label="目标商品 URL（可空）">
+                  <Input
+                    placeholder="https://www.amazon.com/..."
+                    {...register("targetProductUrl")}
+                  />
+                </FieldBlock>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  className="rounded-full"
+                  type="button"
+                  variant={targetIsLaunched ? "secondary" : "default"}
+                  onClick={() =>
+                    setValue("targetIsLaunched", false, { shouldDirty: true })
+                  }
+                >
+                  还未上线
+                </Button>
+                <Button
+                  className="rounded-full"
+                  type="button"
+                  variant={targetIsLaunched ? "default" : "outline"}
+                  onClick={() =>
+                    setValue("targetIsLaunched", true, { shouldDirty: true })
+                  }
+                >
+                  已上线
+                </Button>
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              description="这次上传的评论可以属于目标商品，也可以属于某个竞品。只有这里需要区分来源角色。"
+              title="评论来源"
+            >
+              <Tabs value={reviewSourceRole}>
+                <TabsList className="w-fit">
+                  <TabsTrigger
+                    active={reviewSourceRole === "target"}
+                    value="target"
+                    onClick={() => {
+                      setValue("reviewSourceRole", "target", { shouldDirty: true });
+                      setValue(
+                        "reviewSourceName",
+                        targetProductName || reviewSourceName,
+                        { shouldDirty: true },
+                      );
+                      setValue(
+                        "reviewSourceAsin",
+                        targetProductAsin || reviewSourceAsin,
+                        { shouldDirty: true },
+                      );
+                      setValue(
+                        "reviewSourceUrl",
+                        targetProductUrl || reviewSourceUrl,
+                        { shouldDirty: true },
+                      );
+                      setValue(
+                        "reviewSourceMarket",
+                        targetMarket || reviewSourceMarket,
+                        { shouldDirty: true },
+                      );
+                    }}
+                  >
+                    自己的商品
+                  </TabsTrigger>
+                  <TabsTrigger
+                    active={reviewSourceRole === "competitor"}
+                    value="competitor"
+                    onClick={() =>
+                      setValue("reviewSourceRole", "competitor", {
+                        shouldDirty: true,
+                      })
+                    }
+                  >
+                    竞品
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="target">
+                  <div className="grid gap-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
+                    <p className="text-sm leading-6 text-stone-600">
+                      这份评论会直接挂到目标商品下，不再单独填写一套来源商品字段。
+                      保存时会直接使用下面这些目标商品信息。
+                    </p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <ReadOnlyField
+                        label="评论来源商品名称"
+                        value={targetProductName || "将使用上方目标商品名称"}
+                      />
+                      <ReadOnlyField
+                        label="评论来源市场"
+                        value={targetMarket || "将使用上方目标市场"}
+                      />
+                      <ReadOnlyField
+                        label="评论来源 ASIN"
+                        value={targetProductAsin || "未填写也可以保存"}
+                      />
+                      <ReadOnlyField
+                        label="评论来源 URL"
+                        value={targetProductUrl || "未填写也可以保存"}
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="competitor">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FieldBlock
+                      error={errors.reviewSourceName?.message}
+                      label="竞品名称"
+                      required
+                    >
+                      <Input
+                        placeholder="例如: 某竞品冥想椅"
+                        {...register("reviewSourceName", {
+                          validate: (value) => {
+                            if (watch("reviewSourceRole") === "competitor" && !value.trim()) {
+                              return "请填写竞品名称。";
+                            }
+                            return true;
+                          },
+                        })}
+                        aria-invalid={Boolean(errors.reviewSourceName)}
+                      />
+                    </FieldBlock>
+                    <FieldBlock
+                      error={errors.reviewSourceMarket?.message}
+                      label="竞品市场"
+                      required
+                    >
+                      <Input
+                        placeholder="例如: US"
+                        {...register("reviewSourceMarket", {
+                          validate: (value) => {
+                            if (watch("reviewSourceRole") === "competitor" && !value.trim()) {
+                              return "请填写竞品市场。";
+                            }
+                            return true;
+                          },
+                        })}
+                        aria-invalid={Boolean(errors.reviewSourceMarket)}
+                      />
+                    </FieldBlock>
+                    <FieldBlock label="竞品 ASIN（可空）">
+                      <Input
+                        placeholder="如果文件本身有，也可以不填"
+                        {...register("reviewSourceAsin")}
+                      />
+                    </FieldBlock>
+                    <FieldBlock label="竞品 URL（可空）">
+                      <Input
+                        placeholder="https://www.amazon.com/..."
+                        {...register("reviewSourceUrl")}
+                      />
+                    </FieldBlock>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </SectionCard>
+
+            <SectionCard
+              description="评论文件本身只是证据载体。先解析预览，确认字段和样例没问题，再保存入库。"
+              title="评论文件"
+            >
+              <div className="grid gap-3 rounded-3xl border border-dashed border-stone-300 bg-stone-50 p-5">
+                <div className="grid gap-1">
+                  <p className="text-sm font-medium text-stone-900">
+                    支持 Excel `.xlsx` 和 `.csv`
+                  </p>
+                  <CardDescription className="leading-6">
+                    第一版先确保我们能稳定读懂第三方评论导出文件，再进入数据库入库和分析。
+                  </CardDescription>
+                </div>
+                <Input
+                  accept={ACCEPTED_FILE_TYPES}
+                  className="cursor-pointer border-stone-200 bg-white file:mr-4 file:rounded-md file:bg-stone-100 file:px-3 file:py-1.5 hover:file:bg-stone-200"
+                  type="file"
+                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                />
+              </div>
+            </SectionCard>
 
             <div className="flex flex-wrap items-center gap-3">
               <Button className="rounded-full px-5" disabled={isLoading} type="submit">
@@ -249,22 +572,6 @@ export function ImportWorkbench() {
               </Alert>
             ) : null}
           </form>
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-[2rem] border-stone-800 bg-stone-950 text-stone-50 shadow-[0_20px_70px_rgba(15,23,42,0.16)]">
-        <CardHeader>
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-400">
-            What This Checks
-          </p>
-        </CardHeader>
-        <CardContent>
-          <ul className="grid gap-4 text-sm leading-6 text-stone-300">
-            <li>按真实 Excel 列坐标读取，避免空单元格导致字段错位。</li>
-            <li>自动忽略 `Note` 这类非数据 sheet。</li>
-            <li>把评论文件标准化成后续可入库的 review 结构。</li>
-            <li>先给出字段、统计和样例预览，再进入数据库和分析阶段。</li>
-          </ul>
         </CardContent>
       </Card>
 
@@ -409,6 +716,68 @@ export function ImportWorkbench() {
           </CardContent>
         </Card>
       ) : null}
+    </div>
+  );
+}
+
+function FieldBlock({
+  label,
+  error,
+  required,
+  children,
+}: {
+  label: string;
+  error?: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-2">
+      <p className={cn("text-sm font-medium", error ? "text-rose-700" : "text-stone-900")}>
+        {label}
+        {required ? <span className="ml-1 text-rose-700">*</span> : null}
+      </p>
+      {children}
+      <FieldError message={error} />
+    </div>
+  );
+}
+
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-2">
+      <p className="text-sm font-medium text-stone-900">{label}</p>
+      <div className="rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-600">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) {
+    return null;
+  }
+
+  return <p className="text-xs leading-5 text-rose-700">{message}</p>;
+}
+
+function SectionCard({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-4 rounded-3xl border border-stone-200 bg-white p-5">
+      <div className="grid gap-1">
+        <p className="text-sm font-medium text-stone-900">{title}</p>
+        <p className="text-xs leading-5 text-stone-500">{description}</p>
+      </div>
+      {children}
     </div>
   );
 }
