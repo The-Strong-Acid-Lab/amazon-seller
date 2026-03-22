@@ -17,6 +17,7 @@ export type NormalizedReview = {
   videoUrls: string[];
   reviewUrl: string;
   reviewerName: string;
+  rawRow: RawRow;
 };
 
 type ParsedSheet = {
@@ -44,6 +45,10 @@ export type ImportPreview = {
     };
   };
   sampleRows: NormalizedReview[];
+};
+
+export type ParsedImportResult = Omit<ImportPreview, "sampleRows"> & {
+  reviews: NormalizedReview[];
 };
 
 type RawRow = Record<string, string>;
@@ -338,6 +343,7 @@ function normalizeReview(rawRow: RawRow): NormalizedReview {
     videoUrls,
     reviewUrl: findHeaderValue(rawRow, HEADER_ALIASES.reviewUrl),
     reviewerName: findHeaderValue(rawRow, HEADER_ALIASES.reviewerName),
+    rawRow,
   };
 }
 
@@ -414,7 +420,10 @@ function rowsToRawRecords(rows: string[][]) {
   return { header, records };
 }
 
-export async function createImportPreview(fileName: string, buffer: Buffer) {
+export async function parseReviewImport(
+  fileName: string,
+  buffer: Buffer,
+): Promise<ParsedImportResult> {
   const extension = fileName.split(".").pop()?.toLowerCase();
   const warnings: string[] = [];
 
@@ -467,6 +476,15 @@ export async function createImportPreview(fileName: string, buffer: Buffer) {
     header,
     warnings,
     stats: buildStats(reviews),
-    sampleRows: reviews.slice(0, 5),
+    reviews,
+  } satisfies ParsedImportResult;
+}
+
+export async function createImportPreview(fileName: string, buffer: Buffer) {
+  const parsed = await parseReviewImport(fileName, buffer);
+
+  return {
+    ...parsed,
+    sampleRows: parsed.reviews.slice(0, 5),
   } satisfies ImportPreview;
 }

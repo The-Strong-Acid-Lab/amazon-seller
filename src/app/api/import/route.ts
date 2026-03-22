@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { createImportPreview } from "@/lib/review-import";
+import { persistImportedReviews } from "@/lib/import-persistence";
+import { createImportPreview, parseReviewImport } from "@/lib/review-import";
 
 export const runtime = "nodejs";
 
@@ -17,6 +18,28 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+    const mode = String(formData.get("mode") ?? "preview");
+
+    if (mode === "import") {
+      const projectName = String(formData.get("projectName") ?? "").trim();
+
+      if (!projectName) {
+        return NextResponse.json(
+          { error: "Project name is required before importing to Supabase." },
+          { status: 400 },
+        );
+      }
+
+      const parsed = await parseReviewImport(file.name, buffer);
+      const persisted = await persistImportedReviews(parsed, { projectName });
+      const preview = await createImportPreview(file.name, buffer);
+
+      return NextResponse.json({
+        ...preview,
+        persisted,
+      });
+    }
+
     const preview = await createImportPreview(file.name, buffer);
 
     return NextResponse.json(preview);

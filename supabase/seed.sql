@@ -1,0 +1,2 @@
+-- Seed intentionally left empty for now.
+-- Add test projects or review rows here later if local development needs fixtures.
