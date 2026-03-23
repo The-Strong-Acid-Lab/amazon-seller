@@ -15,6 +15,16 @@ type PersistImportOptions = {
   reviewSourceMarket?: string;
 };
 
+type AppendImportOptions = {
+  existingProjectId: string;
+  targetProductId?: string;
+  reviewSourceRole: "target" | "competitor";
+  reviewSourceName?: string;
+  reviewSourceAsin?: string;
+  reviewSourceUrl?: string;
+  reviewSourceMarket?: string;
+};
+
 export async function persistImportedReviews(
   parsed: ParsedImportResult,
   options: PersistImportOptions,
@@ -95,10 +105,125 @@ export async function persistImportedReviews(
     reviewSourceProductId = competitorProduct.id;
   }
 
+  const persisted = await insertImportFileWithReviews({
+    parsed,
+    projectId: project.id,
+    reviewSourceProductId,
+  });
+
+  return {
+    projectId: project.id,
+    targetProductId: targetProduct.id,
+    reviewSourceProductId,
+    ...persisted,
+  };
+}
+
+export async function appendImportedReviewsToProject(
+  parsed: ParsedImportResult,
+  options: AppendImportOptions,
+) {
+  const supabase = createAdminSupabaseClient();
+
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", options.existingProjectId)
+    .single();
+
+  if (projectError || !project) {
+    throw new Error(projectError?.message ?? "Project not found");
+  }
+
+  let targetProductId = options.targetProductId;
+
+  if (!targetProductId) {
+    const { data: targetProduct, error: targetProductError } = await supabase
+      .from("project_products")
+      .select("id")
+      .eq("project_id", options.existingProjectId)
+      .eq("role", "target")
+      .limit(1)
+      .single();
+
+    if (targetProductError || !targetProduct) {
+      throw new Error(targetProductError?.message ?? "Target product not found");
+    }
+
+    targetProductId = targetProduct.id;
+  }
+
+  if (!targetProductId) {
+    throw new Error("Target product not found");
+  }
+
+  let reviewSourceProductId = targetProductId;
+
+  if (options.reviewSourceRole === "competitor") {
+    const competitorName = options.reviewSourceName?.trim();
+
+    if (!competitorName) {
+      throw new Error("Competitor name is required before importing.");
+    }
+
+    const { data: competitorProduct, error: competitorProductError } = await supabase
+      .from("project_products")
+      .insert({
+        project_id: options.existingProjectId,
+        role: "competitor",
+        name: competitorName,
+        asin:
+          options.reviewSourceAsin ??
+          parsed.reviews.find((review) => review.asin)?.asin ??
+          null,
+        product_url: options.reviewSourceUrl ?? null,
+        market:
+          options.reviewSourceMarket ??
+          Object.keys(parsed.stats.countryDistribution)[0] ??
+          null,
+        is_launched: true,
+      })
+      .select("id")
+      .single();
+
+    if (competitorProductError || !competitorProduct) {
+      throw new Error(
+        competitorProductError?.message ?? "Failed to create competitor product",
+      );
+    }
+
+    reviewSourceProductId = competitorProduct.id;
+  }
+
+  const persisted = await insertImportFileWithReviews({
+    parsed,
+    projectId: options.existingProjectId,
+    reviewSourceProductId,
+  });
+
+  return {
+    projectId: options.existingProjectId,
+    targetProductId,
+    reviewSourceProductId,
+    ...persisted,
+  };
+}
+
+async function insertImportFileWithReviews({
+  parsed,
+  projectId,
+  reviewSourceProductId,
+}: {
+  parsed: ParsedImportResult;
+  projectId: string;
+  reviewSourceProductId: string;
+}) {
+  const supabase = createAdminSupabaseClient();
+
   const { data: importFile, error: importFileError } = await supabase
     .from("import_files")
     .insert({
-      project_id: project.id,
+      project_id: projectId,
       project_product_id: reviewSourceProductId,
       file_name: parsed.fileName,
       file_type: parsed.fileType,
@@ -120,7 +245,7 @@ export async function persistImportedReviews(
     const { data: insertedReview, error: reviewError } = await supabase
       .from("reviews")
       .insert({
-        project_id: project.id,
+        project_id: projectId,
         project_product_id: reviewSourceProductId,
         import_file_id: importFile.id,
         asin: review.asin || null,
@@ -177,9 +302,6 @@ export async function persistImportedReviews(
   }
 
   return {
-    projectId: project.id,
-    targetProductId: targetProduct.id,
-    reviewSourceProductId,
     importFileId: importFile.id,
     importedReviews,
   };

@@ -4,6 +4,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 type DbReviewRow = {
   id: string;
+  project_product_id: string | null;
   asin: string | null;
   model: string | null;
   review_title: string;
@@ -35,6 +36,9 @@ export type VocResponseItem = {
   voc_theme: string;
   buyer_signal: string;
   risk_or_opportunity: string;
+  execution_area: "positioning" | "listing" | "image" | "ads";
+  priority: "p1" | "p2" | "p3";
+  why_now: string;
   recommended_listing_response: string;
   recommended_image_response: string;
   recommended_ad_angle: string;
@@ -50,11 +54,31 @@ export type AnalysisReportShape = {
     date_to: string | null;
     rating_distribution: Record<string, number>;
   };
-  positive_themes: ThemeItem[];
-  negative_themes: ThemeItem[];
+  target_overview: {
+    review_count: number;
+    asin_count: number;
+    country_count: number;
+    date_from: string | null;
+    date_to: string | null;
+    rating_distribution: Record<string, number>;
+  };
+  competitor_overview: {
+    review_count: number;
+    asin_count: number;
+    country_count: number;
+    date_from: string | null;
+    date_to: string | null;
+    rating_distribution: Record<string, number>;
+  };
+  target_positive_themes: ThemeItem[];
+  target_negative_themes: ThemeItem[];
+  competitor_positive_themes: ThemeItem[];
+  competitor_negative_themes: ThemeItem[];
   buyer_desires: LabelSummaryItem[];
   buyer_objections: LabelSummaryItem[];
   usage_scenarios: LabelSummaryItem[];
+  comparison_opportunities: LabelSummaryItem[];
+  comparison_risks: LabelSummaryItem[];
   voc_response_matrix: VocResponseItem[];
   image_strategy: {
     hero_image: string;
@@ -162,8 +186,23 @@ function reviewToPromptLine(review: DbReviewRow) {
   ].join(" | ");
 }
 
-function buildPrompt(datasetOverview: ReturnType<typeof computeDatasetOverview>, reviews: DbReviewRow[]) {
-  const representativeReviews = pickRepresentativeReviews(reviews)
+function buildPrompt({
+  datasetOverview,
+  targetOverview,
+  competitorOverview,
+  targetReviews,
+  competitorReviews,
+}: {
+  datasetOverview: ReturnType<typeof computeDatasetOverview>;
+  targetOverview: ReturnType<typeof computeDatasetOverview>;
+  competitorOverview: ReturnType<typeof computeDatasetOverview>;
+  targetReviews: DbReviewRow[];
+  competitorReviews: DbReviewRow[];
+}) {
+  const representativeTargetReviews = pickRepresentativeReviews(targetReviews)
+    .map((review, index) => `${index + 1}. ${reviewToPromptLine(review)}`)
+    .join("\n");
+  const representativeCompetitorReviews = pickRepresentativeReviews(competitorReviews)
     .map((review, index) => `${index + 1}. ${reviewToPromptLine(review)}`)
     .join("\n");
 
@@ -171,37 +210,50 @@ function buildPrompt(datasetOverview: ReturnType<typeof computeDatasetOverview>,
     {
       role: "system",
       content:
-        "You are an Amazon seller research analyst. Return valid JSON only. Do not include markdown. Ground your analysis in the provided reviews. Focus on conversion-relevant insights, not generic summaries.",
+        "You are an Amazon seller research analyst. Return valid JSON only. Do not include markdown. Ground your analysis in the provided reviews. Focus on conversion-relevant insights, especially how a target product should position itself against competitors.",
     },
     {
       role: "user",
       content: [
-        "Analyze this Amazon review dataset and produce a structured VOC report.",
+        "Analyze this Amazon review dataset and produce a target-vs-competitor structured VOC report.",
         "Use concise, evidence-backed language.",
         "Return JSON with these top-level keys exactly:",
-        "dataset_overview, positive_themes, negative_themes, buyer_desires, buyer_objections, usage_scenarios, voc_response_matrix, image_strategy, copy_strategy",
+        "dataset_overview, target_overview, competitor_overview, target_positive_themes, target_negative_themes, competitor_positive_themes, competitor_negative_themes, buyer_desires, buyer_objections, usage_scenarios, comparison_opportunities, comparison_risks, voc_response_matrix, image_strategy, copy_strategy",
         "",
         "JSON shape requirements:",
-        '- positive_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
-        '- negative_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
+        '- target_positive_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
+        '- target_negative_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
+        '- competitor_positive_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
+        '- competitor_negative_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
         '- buyer_desires: array of { "label": string, "summary": string }',
         '- buyer_objections: array of { "label": string, "summary": string }',
         '- usage_scenarios: array of { "label": string, "summary": string }',
-        '- voc_response_matrix: array of { "voc_theme": string, "buyer_signal": string, "risk_or_opportunity": string, "recommended_listing_response": string, "recommended_image_response": string, "recommended_ad_angle": string, "confidence": "low"|"medium"|"high" }',
+        '- comparison_opportunities: array of { "label": string, "summary": string }',
+        '- comparison_risks: array of { "label": string, "summary": string }',
+        '- voc_response_matrix: array of { "voc_theme": string, "buyer_signal": string, "risk_or_opportunity": string, "execution_area": "positioning"|"listing"|"image"|"ads", "priority": "p1"|"p2"|"p3", "why_now": string, "recommended_listing_response": string, "recommended_image_response": string, "recommended_ad_angle": string, "confidence": "low"|"medium"|"high" }',
         '- image_strategy: object with hero_image, feature_callouts[], objection_handling_images[], lifestyle_scenes[]',
         '- copy_strategy: object with title_angles[], bullet_angles[], proof_phrases[]',
         "",
         "Rules:",
-        "- Keep positive_themes and negative_themes to at most 5 each.",
-        "- Keep buyer_desires, buyer_objections, and usage_scenarios to at most 5 each.",
+        "- target_overview and competitor_overview should echo the dataset stats provided to you without inventing numbers.",
+        "- Keep each theme list to at most 5 items.",
+        "- Keep buyer_desires, buyer_objections, usage_scenarios, comparison_opportunities, and comparison_risks to at most 5 items each.",
+        "- Keep voc_response_matrix to at most 8 items and sort it by action priority, with p1 first.",
+        "- p1 means immediate conversion impact, p2 means important but secondary, p3 means useful later.",
         "- Every evidence entry should be a short review-derived quote or paraphrase, no more than 140 characters.",
         "- Do not invent product features not supported by reviews.",
         "- Keep recommendations practical for listing, image, and advertising decisions.",
+        "- If there are no target reviews, infer target-side opportunities from competitor review gaps and say so implicitly in the summaries.",
         "",
-        `Dataset overview: ${JSON.stringify(datasetOverview)}`,
+        `Global dataset overview: ${JSON.stringify(datasetOverview)}`,
+        `Target review overview: ${JSON.stringify(targetOverview)}`,
+        `Competitor review overview: ${JSON.stringify(competitorOverview)}`,
         "",
-        "Representative reviews:",
-        representativeReviews,
+        "Representative target reviews:",
+        representativeTargetReviews || "No target reviews provided.",
+        "",
+        "Representative competitor reviews:",
+        representativeCompetitorReviews || "No competitor reviews provided.",
       ].join("\n"),
     },
   ];
@@ -240,17 +292,24 @@ function createExportText(report: AnalysisReportShape) {
   lines.push(`Review count: ${report.dataset_overview.review_count}`);
   lines.push(`ASIN count: ${report.dataset_overview.asin_count}`);
   lines.push("");
-  lines.push("Top Positive Themes:");
+  lines.push("Target Positive Themes:");
 
-  for (const item of report.positive_themes) {
+  for (const item of report.target_positive_themes) {
     lines.push(`- ${item.theme}: ${item.summary}`);
   }
 
   lines.push("");
-  lines.push("Top Negative Themes:");
+  lines.push("Competitor Positive Themes:");
 
-  for (const item of report.negative_themes) {
+  for (const item of report.competitor_positive_themes) {
     lines.push(`- ${item.theme}: ${item.summary}`);
+  }
+
+  lines.push("");
+  lines.push("Comparison Opportunities:");
+
+  for (const item of report.comparison_opportunities) {
+    lines.push(`- ${item.label}: ${item.summary}`);
   }
 
   lines.push("");
@@ -258,6 +317,13 @@ function createExportText(report: AnalysisReportShape) {
 
   for (const item of report.buyer_objections) {
     lines.push(`- ${item.label}: ${item.summary}`);
+  }
+
+  lines.push("");
+  lines.push("Priority Actions:");
+
+  for (const item of sortVocResponseItems(report.voc_response_matrix)) {
+    lines.push(`- [${item.priority.toUpperCase()}][${item.execution_area}] ${item.voc_theme}: ${item.why_now}`);
   }
 
   lines.push("");
@@ -276,6 +342,25 @@ function createExportText(report: AnalysisReportShape) {
   }
 
   return lines.join("\n");
+}
+
+function sortVocResponseItems(items: VocResponseItem[]) {
+  const priorityOrder: Record<VocResponseItem["priority"], number> = {
+    p1: 0,
+    p2: 1,
+    p3: 2,
+  };
+
+  return [...items].sort((left, right) => {
+    const leftPriority = priorityOrder[left.priority] ?? 99;
+    const rightPriority = priorityOrder[right.priority] ?? 99;
+
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority;
+    }
+
+    return left.voc_theme.localeCompare(right.voc_theme);
+  });
 }
 
 export async function generateAnalysisReportForProject(projectId: string) {
@@ -301,35 +386,73 @@ export async function generateAnalysisReportForProject(projectId: string) {
     const { data: reviews, error: reviewsError } = await supabase
       .from("reviews")
       .select(
-        "id, asin, model, review_title, review_body, rating, review_date, country, image_count, has_video",
+        "id, project_product_id, asin, model, review_title, review_body, rating, review_date, country, image_count, has_video",
       )
       .eq("project_id", projectId)
       .order("review_date", { ascending: false });
 
+    const { data: projectProducts, error: projectProductsError } = await supabase
+      .from("project_products")
+      .select("id, role")
+      .eq("project_id", projectId);
+
     if (reviewsError) {
       throw new Error(reviewsError.message);
+    }
+
+    if (projectProductsError) {
+      throw new Error(projectProductsError.message);
     }
 
     if (!reviews || reviews.length === 0) {
       throw new Error("No reviews found for this project");
     }
 
+    const roleByProductId = new Map(
+      (projectProducts ?? []).map((product) => [product.id, product.role] as const),
+    );
+    const targetReviews = reviews.filter(
+      (review) => review.project_product_id && roleByProductId.get(review.project_product_id) === "target",
+    );
+    const competitorReviews = reviews.filter(
+      (review) =>
+        review.project_product_id &&
+        roleByProductId.get(review.project_product_id) === "competitor",
+    );
+
     const datasetOverview = computeDatasetOverview(reviews);
-    const prompt = buildPrompt(datasetOverview, reviews);
+    const targetOverview = computeDatasetOverview(targetReviews);
+    const competitorOverview = computeDatasetOverview(competitorReviews);
+    const prompt = buildPrompt({
+      datasetOverview,
+      targetOverview,
+      competitorOverview,
+      targetReviews,
+      competitorReviews,
+    });
     const modelReport = await callOpenAi(prompt);
 
     const report: AnalysisReportShape = {
       ...modelReport,
       dataset_overview: datasetOverview,
+      target_overview: targetOverview,
+      competitor_overview: competitorOverview,
+      voc_response_matrix: sortVocResponseItems(modelReport.voc_response_matrix ?? []),
     };
 
     const summaryJson = {
       dataset_overview: report.dataset_overview,
-      positive_themes: report.positive_themes,
-      negative_themes: report.negative_themes,
+      target_overview: report.target_overview,
+      competitor_overview: report.competitor_overview,
+      target_positive_themes: report.target_positive_themes,
+      target_negative_themes: report.target_negative_themes,
+      competitor_positive_themes: report.competitor_positive_themes,
+      competitor_negative_themes: report.competitor_negative_themes,
       buyer_desires: report.buyer_desires,
       buyer_objections: report.buyer_objections,
       usage_scenarios: report.usage_scenarios,
+      comparison_opportunities: report.comparison_opportunities,
+      comparison_risks: report.comparison_risks,
     };
 
     const strategyJson = {

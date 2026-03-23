@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes } from "react";
 
 import { cn } from "@/lib/utils";
 
-type ButtonVariant = "default" | "outline" | "secondary";
+type ButtonVariant = "default" | "outline" | "secondary" | "destructive";
 type ButtonSize = "default" | "sm" | "lg";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -13,6 +13,8 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 const variantClasses: Record<ButtonVariant, string> = {
   default:
     "bg-stone-950 text-stone-50 hover:bg-stone-800 focus-visible:ring-stone-400",
+  destructive:
+    "bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-300",
   outline:
     "border border-stone-300 bg-white text-stone-900 hover:bg-stone-100 focus-visible:ring-stone-300",
   secondary:

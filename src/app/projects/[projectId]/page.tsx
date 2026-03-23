@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import type { AnalysisReportShape } from "@/lib/analysis";
 import { getProjectPageData } from "@/lib/projects";
 import { AnalyzeProjectButton } from "@/components/analyze-project-button";
+import { ProjectSourceImport } from "@/components/project-source-import";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -20,11 +21,17 @@ function asReport(latestReport: {
 
   return {
     dataset_overview: summary.dataset_overview,
-    positive_themes: summary.positive_themes ?? [],
-    negative_themes: summary.negative_themes ?? [],
+    target_overview: summary.target_overview,
+    competitor_overview: summary.competitor_overview,
+    target_positive_themes: summary.target_positive_themes ?? [],
+    target_negative_themes: summary.target_negative_themes ?? [],
+    competitor_positive_themes: summary.competitor_positive_themes ?? [],
+    competitor_negative_themes: summary.competitor_negative_themes ?? [],
     buyer_desires: summary.buyer_desires ?? [],
     buyer_objections: summary.buyer_objections ?? [],
     usage_scenarios: summary.usage_scenarios ?? [],
+    comparison_opportunities: summary.comparison_opportunities ?? [],
+    comparison_risks: summary.comparison_risks ?? [],
     voc_response_matrix: strategy.voc_response_matrix ?? [],
     image_strategy: strategy.image_strategy,
     copy_strategy: strategy.copy_strategy,
@@ -45,6 +52,30 @@ export default async function ProjectPage({
     const competitorProducts = data.projectProducts.filter(
       (product) => product.role === "competitor",
     );
+    const reviewCountByProduct = new Map<string, number>();
+    const importCountByProduct = new Map<string, number>();
+
+    for (const review of data.reviews) {
+      if (!review.project_product_id) {
+        continue;
+      }
+
+      reviewCountByProduct.set(
+        review.project_product_id,
+        (reviewCountByProduct.get(review.project_product_id) ?? 0) + 1,
+      );
+    }
+
+    for (const importFile of data.importFiles) {
+      if (!importFile.project_product_id) {
+        continue;
+      }
+
+      importCountByProduct.set(
+        importFile.project_product_id,
+        (importCountByProduct.get(importFile.project_product_id) ?? 0) + 1,
+      );
+    }
 
     return (
       <main className="min-h-screen bg-stone-50 px-4 py-8 sm:px-6 lg:px-10">
@@ -88,10 +119,12 @@ export default async function ProjectPage({
               <CardContent className="grid gap-3">
                 <ProjectProductCard
                   asin={targetProduct?.asin ?? null}
+                  importCount={targetProduct ? importCountByProduct.get(targetProduct.id) ?? 0 : 0}
                   isLaunched={targetProduct?.is_launched ?? false}
                   market={targetProduct?.market ?? null}
                   name={targetProduct?.name ?? data.project.product_name ?? "未命名目标商品"}
                   productUrl={targetProduct?.product_url ?? null}
+                  reviewCount={targetProduct ? reviewCountByProduct.get(targetProduct.id) ?? 0 : 0}
                   role="target"
                 />
               </CardContent>
@@ -110,10 +143,12 @@ export default async function ProjectPage({
                     <ProjectProductCard
                       key={product.id}
                       asin={product.asin}
+                      importCount={importCountByProduct.get(product.id) ?? 0}
                       isLaunched={product.is_launched}
                       market={product.market}
                       name={product.name ?? "未命名竞品"}
                       productUrl={product.product_url}
+                      reviewCount={reviewCountByProduct.get(product.id) ?? 0}
                       role="competitor"
                     />
                   ))
@@ -124,13 +159,24 @@ export default async function ProjectPage({
             </Card>
           </div>
 
+          {targetProduct ? (
+            <ProjectSourceImport
+              projectId={data.project.id}
+              targetMarket={targetProduct.market ?? data.project.target_market ?? "US"}
+              targetProductAsin={targetProduct.asin}
+              targetProductId={targetProduct.id}
+              targetProductName={targetProduct.name ?? data.project.product_name ?? "未命名目标商品"}
+              targetProductUrl={targetProduct.product_url}
+            />
+          ) : null}
+
           {report ? (
             <div className="grid gap-6">
               <Card className="rounded-[2rem]">
                 <CardHeader>
                   <CardTitle>分析总览</CardTitle>
                   <CardDescription>
-                    这部分由 LLM 基于评论内容生成，但数据规模和评分结构来自真实评论。
+                    这部分按 target 和 competitor 分开看，不再把所有评论混成一个摘要。
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -158,15 +204,39 @@ export default async function ProjectPage({
               </Card>
 
               <div className="grid gap-6 xl:grid-cols-2">
+                <OverviewCard
+                  title="目标商品评论概览"
+                  overview={report.target_overview}
+                />
+                <OverviewCard
+                  title="竞品评论概览"
+                  overview={report.competitor_overview}
+                />
+              </div>
+
+              <div className="grid gap-6 xl:grid-cols-2">
                 <InsightListCard
-                  description="买家反复认可的价值点。"
-                  items={report.positive_themes}
-                  title="正向主题"
+                  description="如果目标商品已有评论，这里反映买家对它的真实认可点。"
+                  items={report.target_positive_themes}
+                  title="目标商品正向主题"
                 />
                 <InsightListCard
-                  description="最可能阻碍转化的风险和抱怨。"
-                  items={report.negative_themes}
-                  title="负向主题"
+                  description="如果目标商品已有评论，这里反映当前最影响转化的负面反馈。"
+                  items={report.target_negative_themes}
+                  title="目标商品负向主题"
+                />
+              </div>
+
+              <div className="grid gap-6 xl:grid-cols-2">
+                <InsightListCard
+                  description="竞品被买家反复认可的价值点，通常代表类目里的主流期待。"
+                  items={report.competitor_positive_themes}
+                  title="竞品正向主题"
+                />
+                <InsightListCard
+                  description="竞品的负面反馈往往就是目标商品可以切入的机会。"
+                  items={report.competitor_negative_themes}
+                  title="竞品负向主题"
                 />
               </div>
 
@@ -185,28 +255,52 @@ export default async function ProjectPage({
                 />
               </div>
 
+              <div className="grid gap-6 xl:grid-cols-2">
+                <LabelSummaryCard
+                  items={report.comparison_opportunities}
+                  title="定位机会"
+                />
+                <LabelSummaryCard
+                  items={report.comparison_risks}
+                  title="定位风险"
+                />
+              </div>
+
               <Card className="rounded-[2rem]">
                 <CardHeader>
-                  <CardTitle>VOC 到响应策略</CardTitle>
+                  <CardTitle>优先执行清单</CardTitle>
                   <CardDescription>
-                    把评论里的声音转成 listing、图片和广告的具体动作。
+                    不是泛泛建议，而是按优先级排好的动作。先做 P1，再处理 P2、P3。
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4">
-                  {report.voc_response_matrix.length > 0 ? (
-                    report.voc_response_matrix.map((item) => (
+                  {sortVocResponseItems(report.voc_response_matrix).length > 0 ? (
+                    sortVocResponseItems(report.voc_response_matrix).map((item) => (
                       <div
                         key={`${item.voc_theme}-${item.buyer_signal}`}
                         className="rounded-2xl border border-stone-200 p-4"
                       >
                         <div className="flex flex-wrap items-center gap-2">
+                          <Badge
+                            className="rounded-full"
+                            variant={item.priority === "p1" ? "default" : "outline"}
+                          >
+                            {formatPriority(item.priority)}
+                          </Badge>
+                          <Badge className="rounded-full" variant="secondary">
+                            {formatExecutionArea(item.execution_area)}
+                          </Badge>
                           <Badge className="rounded-full" variant="outline">
                             {item.voc_theme}
                           </Badge>
-                          <Badge className="rounded-full" variant="secondary">
+                          <Badge className="rounded-full" variant="outline">
                             {item.confidence}
                           </Badge>
                         </div>
+                        <p className="mt-3 text-sm text-stone-700">
+                          <span className="font-medium text-stone-900">为什么现在做:</span>{" "}
+                          {item.why_now || "未提供"}
+                        </p>
                         <p className="mt-3 text-sm text-stone-700">
                           <span className="font-medium text-stone-900">Buyer signal:</span>{" "}
                           {item.buyer_signal}
@@ -303,6 +397,8 @@ function ProjectProductCard({
   productUrl,
   market,
   isLaunched,
+  reviewCount,
+  importCount,
 }: {
   role: "target" | "competitor";
   name: string;
@@ -310,6 +406,8 @@ function ProjectProductCard({
   productUrl: string | null;
   market: string | null;
   isLaunched: boolean;
+  reviewCount: number;
+  importCount: number;
 }) {
   return (
     <div className="rounded-2xl border border-stone-200 p-4">
@@ -322,6 +420,14 @@ function ProjectProductCard({
         </Badge>
       </div>
       <p className="mt-3 text-base font-semibold text-stone-950">{name}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Badge className="rounded-full" variant="outline">
+          {reviewCount} reviews
+        </Badge>
+        <Badge className="rounded-full" variant="outline">
+          {importCount} imports
+        </Badge>
+      </div>
       <div className="mt-3 grid gap-2 text-sm text-stone-700">
         <p>
           <span className="font-medium text-stone-900">ASIN:</span> {asin ?? "-"}
@@ -337,6 +443,74 @@ function ProjectProductCard({
   );
 }
 
+function sortVocResponseItems(
+  items: Array<{
+    priority?: string;
+    voc_theme: string;
+    buyer_signal: string;
+    risk_or_opportunity: string;
+    execution_area?: string;
+    why_now?: string;
+    recommended_listing_response: string;
+    recommended_image_response: string;
+    recommended_ad_angle: string;
+    confidence: string;
+  }>,
+) {
+  const priorityOrder: Record<string, number> = {
+    p1: 0,
+    p2: 1,
+    p3: 2,
+  };
+
+  return [...items].sort((left, right) => {
+    const leftPriority = priorityOrder[left.priority ?? "zzz"] ?? 99;
+    const rightPriority = priorityOrder[right.priority ?? "zzz"] ?? 99;
+
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority;
+    }
+
+    return left.voc_theme.localeCompare(right.voc_theme);
+  });
+}
+
+function formatPriority(priority?: string) {
+  if (priority === "p1") {
+    return "P1 先做";
+  }
+
+  if (priority === "p2") {
+    return "P2 其次";
+  }
+
+  if (priority === "p3") {
+    return "P3 后续";
+  }
+
+  return "未分级";
+}
+
+function formatExecutionArea(area?: string) {
+  if (area === "positioning") {
+    return "定位";
+  }
+
+  if (area === "listing") {
+    return "Listing";
+  }
+
+  if (area === "image") {
+    return "图片";
+  }
+
+  if (area === "ads") {
+    return "广告";
+  }
+
+  return "未分类";
+}
+
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
     <Card className="rounded-[1.5rem] shadow-none">
@@ -345,6 +519,50 @@ function MetricCard({ label, value }: { label: string; value: string }) {
           {label}
         </p>
         <p className="mt-3 text-2xl font-semibold text-stone-950">{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OverviewCard({
+  title,
+  overview,
+}: {
+  title: string;
+  overview:
+    | {
+        review_count: number;
+        asin_count: number;
+        country_count: number;
+        date_from: string | null;
+        date_to: string | null;
+        rating_distribution: Record<string, number>;
+      }
+    | undefined;
+}) {
+  return (
+    <Card className="rounded-[2rem]">
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <MetricCard label="评论数" value={String(overview?.review_count ?? 0)} />
+          <MetricCard label="ASIN 数" value={String(overview?.asin_count ?? 0)} />
+          <MetricCard label="国家数" value={String(overview?.country_count ?? 0)} />
+          <MetricCard label="日期范围" value={formatDateRange(overview)} />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {overview && Object.keys(overview.rating_distribution).length > 0 ? (
+            Object.entries(overview.rating_distribution).map(([rating, count]) => (
+              <Badge key={rating} className="rounded-full" variant="outline">
+                {rating} 星: {count}
+              </Badge>
+            ))
+          ) : (
+            <p className="text-sm text-stone-500">还没有评分分布。</p>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -448,4 +666,23 @@ function StringListCard({
       </CardContent>
     </Card>
   );
+}
+
+function formatDateRange(
+  overview:
+    | {
+        date_from: string | null;
+        date_to: string | null;
+      }
+    | undefined,
+) {
+  if (!overview?.date_from && !overview?.date_to) {
+    return "-";
+  }
+
+  if (overview.date_from && overview.date_to) {
+    return `${overview.date_from} -> ${overview.date_to}`;
+  }
+
+  return overview.date_from ?? overview.date_to ?? "-";
 }
