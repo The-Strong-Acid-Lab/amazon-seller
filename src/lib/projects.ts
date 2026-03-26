@@ -15,7 +15,7 @@ export async function getProjectsListData() {
       .order("created_at", { ascending: false }),
     supabase
       .from("project_products")
-      .select("id, project_id, role, name")
+      .select("id, project_id, role, name, current_title, current_bullets, current_description")
       .order("created_at", { ascending: true }),
     supabase
       .from("reviews")
@@ -107,7 +107,9 @@ export async function getProjectPageData(projectId: string) {
         .order("created_at", { ascending: false }),
       supabase
         .from("project_products")
-        .select("id, role, name, asin, product_url, market, is_launched")
+        .select(
+          "id, role, name, asin, product_url, market, is_launched, current_title, current_bullets, current_description, notes, updated_at, created_at",
+        )
         .eq("project_id", projectId)
         .order("created_at", { ascending: true }),
     ]);

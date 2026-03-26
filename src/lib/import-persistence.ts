@@ -3,7 +3,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 type PersistImportOptions = {
   projectName: string;
-  targetProductName: string;
+  targetProductName?: string;
   targetProductAsin?: string;
   targetProductUrl?: string;
   targetMarket?: string;
@@ -13,11 +13,20 @@ type PersistImportOptions = {
   reviewSourceAsin?: string;
   reviewSourceUrl?: string;
   reviewSourceMarket?: string;
+  selectedReviewSourceId?: string;
+  presetCompetitors?: Array<{
+    localId?: string;
+    name?: string;
+    asin?: string;
+    url?: string;
+    market?: string;
+  }>;
 };
 
 type AppendImportOptions = {
   existingProjectId: string;
   targetProductId?: string;
+  reviewSourceProductId?: string;
   reviewSourceRole: "target" | "competitor";
   reviewSourceName?: string;
   reviewSourceAsin?: string;
@@ -30,22 +39,25 @@ export async function persistImportedReviews(
   options: PersistImportOptions,
 ) {
   const supabase = createAdminSupabaseClient();
+  const resolvedTargetName =
+    options.targetProductName?.trim() || options.projectName || "未命名目标商品";
+  const resolvedTargetMarket =
+    options.targetMarket ??
+    options.reviewSourceMarket ??
+    Object.keys(parsed.stats.countryDistribution)[0] ??
+    "US";
 
   const { data: project, error: projectError } = await supabase
     .from("projects")
     .insert({
       name: options.projectName,
-      product_name: options.targetProductName,
+      product_name: resolvedTargetName,
       target_asin:
         options.targetProductAsin ??
         (options.reviewSourceRole === "target"
           ? options.reviewSourceAsin ?? parsed.reviews.find((review) => review.asin)?.asin ?? null
           : null),
-      target_market:
-        options.targetMarket ??
-        options.reviewSourceMarket ??
-        Object.keys(parsed.stats.countryDistribution)[0] ??
-        "unknown",
+      target_market: resolvedTargetMarket,
       status: "ready",
     })
     .select("id")
@@ -60,10 +72,10 @@ export async function persistImportedReviews(
     .insert({
       project_id: project.id,
       role: "target",
-      name: options.targetProductName,
+      name: resolvedTargetName,
       asin: options.targetProductAsin ?? null,
       product_url: options.targetProductUrl ?? null,
-      market: options.targetMarket ?? null,
+      market: resolvedTargetMarket,
       is_launched: options.targetIsLaunched,
     })
     .select("id")
@@ -73,36 +85,104 @@ export async function persistImportedReviews(
     throw new Error(targetProductError?.message ?? "Failed to create target product");
   }
 
-  let reviewSourceProductId = targetProduct.id;
+  const presetCompetitors = (options.presetCompetitors ?? [])
+    .map((item) => ({
+      localId: item.localId?.trim() ?? "",
+      name: item.name?.trim() ?? "",
+      asin: item.asin?.trim() ?? "",
+      url: item.url?.trim() ?? "",
+      market: item.market?.trim() ?? "",
+    }))
+    .filter((item) => item.name || item.asin || item.url || item.market);
 
-  if (options.reviewSourceRole === "competitor") {
-    const { data: competitorProduct, error: competitorProductError } = await supabase
-      .from("project_products")
-      .insert({
-        project_id: project.id,
-        role: "competitor",
-        name: options.reviewSourceName,
-        asin:
-          options.reviewSourceAsin ??
-          parsed.reviews.find((review) => review.asin)?.asin ??
-          null,
-        product_url: options.reviewSourceUrl ?? null,
-        market:
-          options.reviewSourceMarket ??
-          Object.keys(parsed.stats.countryDistribution)[0] ??
-          null,
-        is_launched: true,
-      })
-      .select("id")
-      .single();
+  const sourceProductIdByRef = new Map<string, string>();
+  sourceProductIdByRef.set("target", targetProduct.id);
+  const createdCompetitors: Array<{
+    id: string;
+    name: string;
+    asin: string;
+    url: string;
+  }> = [];
 
-    if (competitorProductError || !competitorProduct) {
-      throw new Error(
-        competitorProductError?.message ?? "Failed to create competitor product",
-      );
+  if (presetCompetitors.length > 0) {
+    for (const competitor of presetCompetitors) {
+      const { data: createdCompetitor, error: competitorError } = await supabase
+        .from("project_products")
+        .insert({
+          project_id: project.id,
+          role: "competitor",
+          name: competitor.name || "未命名竞品",
+          asin: competitor.asin || null,
+          product_url: competitor.url || null,
+          market: competitor.market || null,
+          is_launched: true,
+        })
+        .select("id")
+        .single();
+
+      if (competitorError || !createdCompetitor) {
+        throw new Error(competitorError?.message ?? "Failed to create competitor product");
+      }
+
+      if (competitor.localId) {
+        sourceProductIdByRef.set(competitor.localId, createdCompetitor.id);
+      }
+
+      createdCompetitors.push({
+        id: createdCompetitor.id,
+        name: competitor.name,
+        asin: competitor.asin,
+        url: competitor.url,
+      });
     }
+  }
 
-    reviewSourceProductId = competitorProduct.id;
+  let reviewSourceProductId = targetProduct.id;
+  const selectedSourceRef = options.selectedReviewSourceId?.trim();
+
+  if (selectedSourceRef && sourceProductIdByRef.has(selectedSourceRef)) {
+    reviewSourceProductId = sourceProductIdByRef.get(selectedSourceRef)!;
+  } else if (options.reviewSourceRole === "competitor") {
+    const desiredName = options.reviewSourceName?.trim() ?? "";
+    const desiredAsin = options.reviewSourceAsin?.trim() ?? "";
+    const desiredUrl = options.reviewSourceUrl?.trim() ?? "";
+
+    const existingCompetitor =
+      createdCompetitors.find((item) => Boolean(desiredAsin) && item.asin === desiredAsin) ??
+      createdCompetitors.find((item) => Boolean(desiredName) && item.name === desiredName) ??
+      createdCompetitors.find((item) => Boolean(desiredUrl) && item.url === desiredUrl);
+
+    if (existingCompetitor) {
+      reviewSourceProductId = existingCompetitor.id;
+    } else {
+      const { data: competitorProduct, error: competitorProductError } = await supabase
+        .from("project_products")
+        .insert({
+          project_id: project.id,
+          role: "competitor",
+          name: options.reviewSourceName || "未命名竞品",
+          asin:
+            options.reviewSourceAsin ??
+            parsed.reviews.find((review) => review.asin)?.asin ??
+            null,
+          product_url: options.reviewSourceUrl ?? null,
+          market:
+            options.reviewSourceMarket ??
+            Object.keys(parsed.stats.countryDistribution)[0] ??
+            null,
+          is_launched: true,
+        })
+        .select("id")
+        .single();
+
+      if (competitorProductError || !competitorProduct) {
+        throw new Error(
+          competitorProductError?.message ?? "Failed to create competitor product",
+        );
+      }
+
+      reviewSourceProductId = competitorProduct.id;
+    }
   }
 
   const persisted = await insertImportFileWithReviews({
@@ -159,7 +239,20 @@ export async function appendImportedReviewsToProject(
 
   let reviewSourceProductId = targetProductId;
 
-  if (options.reviewSourceRole === "competitor") {
+  if (options.reviewSourceProductId) {
+    const { data: sourceProduct, error: sourceProductError } = await supabase
+      .from("project_products")
+      .select("id")
+      .eq("project_id", options.existingProjectId)
+      .eq("id", options.reviewSourceProductId)
+      .single();
+
+    if (sourceProductError || !sourceProduct) {
+      throw new Error(sourceProductError?.message ?? "Review source product not found");
+    }
+
+    reviewSourceProductId = sourceProduct.id;
+  } else if (options.reviewSourceRole === "competitor") {
     const competitorName = options.reviewSourceName?.trim();
 
     if (!competitorName) {

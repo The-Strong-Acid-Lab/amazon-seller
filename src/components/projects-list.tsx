@@ -19,7 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-type ProjectListItem = {
+export type ProjectListItem = {
   id: string;
   name: string;
   product_name: string | null;
@@ -31,7 +31,13 @@ type ProjectListItem = {
   latestReportAt: string | null;
 };
 
-export function ProjectsList({ projects }: { projects: ProjectListItem[] }) {
+export function ProjectsList({
+  projects,
+  onCreateProject,
+}: {
+  projects: ProjectListItem[];
+  onCreateProject?: () => void;
+}) {
   const router = useRouter();
   const [projectToDelete, setProjectToDelete] = useState<ProjectListItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -71,23 +77,28 @@ export function ProjectsList({ projects }: { projects: ProjectListItem[] }) {
         {projects.map((project) => (
           <Card
             key={project.id}
-            className="h-full rounded-[2rem] border-stone-200 transition-transform duration-150 hover:-translate-y-0.5 hover:shadow-[0_20px_70px_rgba(15,23,42,0.08)]"
+            className="h-full rounded-xl border border-[var(--page-border)] bg-white/80 transition-colors duration-150 hover:border-[#b59a79]"
           >
             <CardHeader>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="rounded-full text-xs text-stone-600">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline" className="rounded-md border-[var(--page-border)] bg-white/75 font-mono text-[11px] text-[var(--page-muted)]">
+                    {project.target_market ?? "-"}
+                  </Badge>
+                  <Badge variant="secondary" className="rounded-md border border-transparent bg-[var(--page-accent-soft)] font-mono text-[11px] text-[#8d5b32]">
+                    {project.latestReportAt ? "已分析" : "待分析"}
+                  </Badge>
+                </div>
+                <Badge variant="outline" className="rounded-md border-[var(--page-border)] bg-white/75 font-mono text-[11px] text-[var(--page-muted)]">
                   {project.status}
                 </Badge>
-                <Badge variant="secondary" className="rounded-full text-xs">
-                  {project.target_market ?? "-"}
-                </Badge>
               </div>
-              <CardTitle className="line-clamp-2">{project.name}</CardTitle>
-              <CardDescription className="line-clamp-2">
+              <CardTitle className="line-clamp-2 text-lg">{project.name}</CardTitle>
+              <CardDescription className="line-clamp-2 text-[var(--page-muted)]">
                 {project.product_name ?? "未命名目标商品"}
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4">
+            <CardContent className="grid gap-5">
               <div className="grid grid-cols-3 gap-3">
                 <MiniStat label="评论" value={String(project.reviewCount)} />
                 <MiniStat label="竞品" value={String(project.competitorCount)} />
@@ -96,10 +107,12 @@ export function ProjectsList({ projects }: { projects: ProjectListItem[] }) {
                   value={project.latestReportAt ? "已生成" : "未开始"}
                 />
               </div>
-              <p className="text-xs text-stone-500">创建于 {formatDate(project.created_at)}</p>
+              <div className="rounded-md border border-[var(--page-border)] bg-white/72 px-3 py-2 text-xs text-[var(--page-muted)]">
+                创建于 {formatDate(project.created_at)}
+              </div>
               <div className="flex flex-wrap gap-3">
-                <Link href={`/projects/${project.id}`}>
-                  <Button className="rounded-full" variant="outline">
+                <Link className="flex-1 min-w-[8rem]" href={`/projects/${project.id}`}>
+                  <Button className="w-full rounded-full" variant="outline">
                     查看项目
                   </Button>
                 </Link>
@@ -116,7 +129,7 @@ export function ProjectsList({ projects }: { projects: ProjectListItem[] }) {
                   }}
                 >
                   <DialogTrigger
-                    className="inline-flex h-10 items-center justify-center rounded-full border border-rose-200 px-4 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50"
+                    className="inline-flex h-10 items-center justify-center rounded-full border border-rose-200 bg-white/75 px-4 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50"
                   >
                     删除项目
                   </DialogTrigger>
@@ -170,6 +183,18 @@ export function ProjectsList({ projects }: { projects: ProjectListItem[] }) {
             </CardContent>
           </Card>
         ))}
+        {onCreateProject ? (
+          <button
+            className="flex h-full min-h-[22rem] flex-col items-center justify-center gap-5 rounded-xl border border-dashed border-[#b9936f] bg-[rgba(255,249,240,0.78)] text-[#8d5b32] transition-colors hover:bg-[rgba(255,244,231,0.9)]"
+            onClick={onCreateProject}
+            type="button"
+          >
+            <span className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-[#b9936f] bg-white text-3xl leading-none">
+              +
+            </span>
+            <span className="text-sm font-semibold tracking-[0.16em]">新建</span>
+          </button>
+        ) : null}
       </div>
     </>
   );
@@ -177,8 +202,8 @@ export function ProjectsList({ projects }: { projects: ProjectListItem[] }) {
 
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-stone-200 bg-stone-50 px-3 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+    <div className="rounded-md border border-[var(--page-border)] bg-white/82 px-3 py-3">
+      <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--page-muted)]">
         {label}
       </p>
       <p className="mt-2 text-base font-semibold text-stone-950">{value}</p>

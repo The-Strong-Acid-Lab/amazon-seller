@@ -16,6 +16,18 @@ type DbReviewRow = {
   has_video: boolean;
 };
 
+type DbProjectProductRow = {
+  id: string;
+  role: "target" | "competitor";
+  name: string | null;
+  asin: string | null;
+  market: string | null;
+  product_url: string | null;
+  current_title: string | null;
+  current_bullets: string | null;
+  current_description: string | null;
+};
+
 type OpenAiMessage = {
   role: "system" | "user";
   content: string;
@@ -30,6 +42,15 @@ export type ThemeItem = {
 export type LabelSummaryItem = {
   label: string;
   summary: string;
+  evidence?: string[];
+};
+
+export type PersonaItem = {
+  name: string;
+  who: string;
+  goal: string;
+  pain_point: string;
+  message_angle: string;
 };
 
 export type VocResponseItem = {
@@ -43,6 +64,39 @@ export type VocResponseItem = {
   recommended_image_response: string;
   recommended_ad_angle: string;
   confidence: "low" | "medium" | "high";
+};
+
+export type ExecutionTaskItem = {
+  task_title: string;
+  priority: "p1" | "p2" | "p3";
+  workstream: "positioning" | "listing" | "image" | "ads";
+  concrete_action: string;
+  expected_impact: string;
+  success_signal: string;
+};
+
+export type ListingDraftShape = {
+  title_draft: string;
+  title_rationale: string;
+  bullet_drafts: string[];
+  bullet_rationales: string[];
+  positioning_statement: string;
+};
+
+export type ImageBriefItem = {
+  slot: string;
+  goal: string;
+  message: string;
+  supporting_proof: string;
+  visual_direction: string;
+};
+
+export type APlusBriefItem = {
+  module: string;
+  goal: string;
+  key_message: string;
+  supporting_proof: string;
+  content_direction: string;
 };
 
 export type AnalysisReportShape = {
@@ -77,8 +131,23 @@ export type AnalysisReportShape = {
   buyer_desires: LabelSummaryItem[];
   buyer_objections: LabelSummaryItem[];
   usage_scenarios: LabelSummaryItem[];
+  usage_where: LabelSummaryItem[];
+  usage_when: LabelSummaryItem[];
+  usage_how: LabelSummaryItem[];
+  product_what: LabelSummaryItem[];
+  user_personas: PersonaItem[];
+  purchase_drivers: LabelSummaryItem[];
+  negative_opinions: LabelSummaryItem[];
+  unmet_needs: LabelSummaryItem[];
+  baseline_requirements: LabelSummaryItem[];
+  performance_levers: LabelSummaryItem[];
+  differentiators: LabelSummaryItem[];
   comparison_opportunities: LabelSummaryItem[];
   comparison_risks: LabelSummaryItem[];
+  execution_tasks: ExecutionTaskItem[];
+  listing_draft: ListingDraftShape;
+  image_brief: ImageBriefItem[];
+  a_plus_brief: APlusBriefItem[];
   voc_response_matrix: VocResponseItem[];
   image_strategy: {
     hero_image: string;
@@ -91,6 +160,15 @@ export type AnalysisReportShape = {
     bullet_angles: string[];
     proof_phrases: string[];
   };
+};
+
+export type CompetitorInsightShape = {
+  positive_themes: ThemeItem[];
+  negative_themes: ThemeItem[];
+  purchase_drivers: LabelSummaryItem[];
+  negative_opinions: LabelSummaryItem[];
+  listing_angles: LabelSummaryItem[];
+  inspiration_for_target: LabelSummaryItem[];
 };
 
 function requireOpenAiEnv(name: string) {
@@ -186,18 +264,42 @@ function reviewToPromptLine(review: DbReviewRow) {
   ].join(" | ");
 }
 
+function cleanListingText(value: string | null | undefined, maxLength: number) {
+  if (!value) {
+    return "Not provided.";
+  }
+
+  return value.replace(/\s+/g, " ").trim().slice(0, maxLength) || "Not provided.";
+}
+
+function listingToPromptBlock(product: DbProjectProductRow) {
+  return [
+    `name=${product.name ?? "-"}`,
+    `asin=${product.asin ?? "-"}`,
+    `market=${product.market ?? "-"}`,
+    `url=${product.product_url ?? "-"}`,
+    `title=${cleanListingText(product.current_title, 260)}`,
+    `bullets=${cleanListingText(product.current_bullets, 600)}`,
+    `description=${cleanListingText(product.current_description, 600)}`,
+  ].join("\n");
+}
+
 function buildPrompt({
   datasetOverview,
   targetOverview,
   competitorOverview,
   targetReviews,
   competitorReviews,
+  targetProducts,
+  competitorProducts,
 }: {
   datasetOverview: ReturnType<typeof computeDatasetOverview>;
   targetOverview: ReturnType<typeof computeDatasetOverview>;
   competitorOverview: ReturnType<typeof computeDatasetOverview>;
   targetReviews: DbReviewRow[];
   competitorReviews: DbReviewRow[];
+  targetProducts: DbProjectProductRow[];
+  competitorProducts: DbProjectProductRow[];
 }) {
   const representativeTargetReviews = pickRepresentativeReviews(targetReviews)
     .map((review, index) => `${index + 1}. ${reviewToPromptLine(review)}`)
@@ -205,6 +307,12 @@ function buildPrompt({
   const representativeCompetitorReviews = pickRepresentativeReviews(competitorReviews)
     .map((review, index) => `${index + 1}. ${reviewToPromptLine(review)}`)
     .join("\n");
+  const targetListingBlocks = targetProducts
+    .map((product, index) => `Target ${index + 1}\n${listingToPromptBlock(product)}`)
+    .join("\n\n");
+  const competitorListingBlocks = competitorProducts
+    .map((product, index) => `Competitor ${index + 1}\n${listingToPromptBlock(product)}`)
+    .join("\n\n");
 
   const messages: OpenAiMessage[] = [
     {
@@ -218,18 +326,33 @@ function buildPrompt({
         "Analyze this Amazon review dataset and produce a target-vs-competitor structured VOC report.",
         "Use concise, evidence-backed language.",
         "Return JSON with these top-level keys exactly:",
-        "dataset_overview, target_overview, competitor_overview, target_positive_themes, target_negative_themes, competitor_positive_themes, competitor_negative_themes, buyer_desires, buyer_objections, usage_scenarios, comparison_opportunities, comparison_risks, voc_response_matrix, image_strategy, copy_strategy",
+        "dataset_overview, target_overview, competitor_overview, target_positive_themes, target_negative_themes, competitor_positive_themes, competitor_negative_themes, buyer_desires, buyer_objections, usage_scenarios, usage_where, usage_when, usage_how, product_what, user_personas, purchase_drivers, negative_opinions, unmet_needs, baseline_requirements, performance_levers, differentiators, comparison_opportunities, comparison_risks, execution_tasks, listing_draft, image_brief, a_plus_brief, voc_response_matrix, image_strategy, copy_strategy",
         "",
         "JSON shape requirements:",
         '- target_positive_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
         '- target_negative_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
         '- competitor_positive_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
         '- competitor_negative_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
-        '- buyer_desires: array of { "label": string, "summary": string }',
-        '- buyer_objections: array of { "label": string, "summary": string }',
-        '- usage_scenarios: array of { "label": string, "summary": string }',
-        '- comparison_opportunities: array of { "label": string, "summary": string }',
-        '- comparison_risks: array of { "label": string, "summary": string }',
+        '- buyer_desires: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- buyer_objections: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- usage_scenarios: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- usage_where: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- usage_when: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- usage_how: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- product_what: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- user_personas: array of { "name": string, "who": string, "goal": string, "pain_point": string, "message_angle": string }',
+        '- purchase_drivers: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- negative_opinions: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- unmet_needs: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- baseline_requirements: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- performance_levers: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- differentiators: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- comparison_opportunities: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- comparison_risks: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- execution_tasks: array of { "task_title": string, "priority": "p1"|"p2"|"p3", "workstream": "positioning"|"listing"|"image"|"ads", "concrete_action": string, "expected_impact": string, "success_signal": string }',
+        '- listing_draft: object with title_draft, title_rationale, bullet_drafts[], bullet_rationales[], positioning_statement',
+        '- image_brief: array of { "slot": string, "goal": string, "message": string, "supporting_proof": string, "visual_direction": string }',
+        '- a_plus_brief: array of { "module": string, "goal": string, "key_message": string, "supporting_proof": string, "content_direction": string }',
         '- voc_response_matrix: array of { "voc_theme": string, "buyer_signal": string, "risk_or_opportunity": string, "execution_area": "positioning"|"listing"|"image"|"ads", "priority": "p1"|"p2"|"p3", "why_now": string, "recommended_listing_response": string, "recommended_image_response": string, "recommended_ad_angle": string, "confidence": "low"|"medium"|"high" }',
         '- image_strategy: object with hero_image, feature_callouts[], objection_handling_images[], lifestyle_scenes[]',
         '- copy_strategy: object with title_angles[], bullet_angles[], proof_phrases[]',
@@ -237,9 +360,33 @@ function buildPrompt({
         "Rules:",
         "- target_overview and competitor_overview should echo the dataset stats provided to you without inventing numbers.",
         "- Keep each theme list to at most 5 items.",
-        "- Keep buyer_desires, buyer_objections, usage_scenarios, comparison_opportunities, and comparison_risks to at most 5 items each.",
+        "- Keep buyer_desires, buyer_objections, usage_scenarios, usage_where, usage_when, usage_how, product_what, purchase_drivers, negative_opinions, unmet_needs, baseline_requirements, performance_levers, differentiators, comparison_opportunities, and comparison_risks to at most 5 items each.",
+        "- Keep user_personas to at most 3 items.",
+        "- Each user_persona should be grounded in the reviews and should be useful for listing and image decisions, not vague demographics.",
+        "- For all label-summary arrays, include 1 to 3 short evidence snippets whenever the reviews support them.",
+        "- usage_where should capture locations or environmental contexts of use.",
+        "- usage_when should capture timing, moments, or triggers for use.",
+        "- usage_how should capture the way people use the product, including posture, routine, or process.",
+        "- product_what should capture the specific attributes, features, materials, dimensions, or product qualities buyers keep talking about.",
+        "- purchase_drivers should capture what most pushes people toward purchase in this category or product context.",
+        "- negative_opinions should capture what most causes doubt, dissatisfaction, or abandonment risk.",
+        "- unmet_needs should capture needs that reviews imply are not fully addressed by current competitor offerings.",
+        "- baseline_requirements should capture table-stakes expectations: if these are unclear or weak, conversion suffers.",
+        "- performance_levers should capture areas where better execution meaningfully improves conversion compared with weaker rivals.",
+        "- differentiators should capture angles that can genuinely separate the target product from competitors instead of repeating category clichés.",
+        "- Keep execution_tasks to at most 6 items and sort them by priority, with p1 first.",
+        "- Every execution task must be concrete enough that a seller or operator can act on it this week.",
+        "- listing_draft.bullet_drafts should contain exactly 5 bullets when enough evidence exists, otherwise as many solid bullets as the evidence supports.",
+        "- listing_draft should reflect a differentiated target product angle, not a generic rewrite.",
+        '- image_brief should contain 6 items when enough evidence exists: Hero, Image 2, Image 3, Image 4, Image 5, Image 6.',
+        "- Each image_brief item should tell a designer what the image is supposed to accomplish, not just repeat a keyword.",
+        '- a_plus_brief should contain 4 to 6 modules when enough evidence exists, for example Brand story, Core value, Feature proof, Objection handling, Lifestyle, Comparison.',
+        "- Each a_plus_brief item should explain what that module should accomplish and how it should support conversion.",
         "- Keep voc_response_matrix to at most 8 items and sort it by action priority, with p1 first.",
         "- p1 means immediate conversion impact, p2 means important but secondary, p3 means useful later.",
+        "- If there are no target reviews, target_positive_themes and target_negative_themes must be empty arrays.",
+        "- Use listing inputs to judge what competitors are already saying well or poorly, not just what reviews say.",
+        "- When listing inputs are missing, do not invent them; rely on the reviews that are available.",
         "- Every evidence entry should be a short review-derived quote or paraphrase, no more than 140 characters.",
         "- Do not invent product features not supported by reviews.",
         "- Keep recommendations practical for listing, image, and advertising decisions.",
@@ -248,6 +395,12 @@ function buildPrompt({
         `Global dataset overview: ${JSON.stringify(datasetOverview)}`,
         `Target review overview: ${JSON.stringify(targetOverview)}`,
         `Competitor review overview: ${JSON.stringify(competitorOverview)}`,
+        "",
+        "Target listing inputs:",
+        targetListingBlocks || "No target listing inputs provided.",
+        "",
+        "Competitor listing inputs:",
+        competitorListingBlocks || "No competitor listing inputs provided.",
         "",
         "Representative target reviews:",
         representativeTargetReviews || "No target reviews provided.",
@@ -261,7 +414,62 @@ function buildPrompt({
   return messages;
 }
 
-async function callOpenAi(messages: OpenAiMessage[]) {
+function buildCompetitorInsightPrompt({
+  competitor,
+  reviews,
+}: {
+  competitor: DbProjectProductRow;
+  reviews: DbReviewRow[];
+}) {
+  const representativeReviews = pickRepresentativeReviews(reviews)
+    .map((review, index) => `${index + 1}. ${reviewToPromptLine(review)}`)
+    .join("\n");
+
+  const messages: OpenAiMessage[] = [
+    {
+      role: "system",
+      content:
+        "You are an Amazon seller competitor analyst. Return valid JSON only. Do not include markdown. Ground every conclusion in the provided competitor reviews and listing inputs.",
+    },
+    {
+      role: "user",
+      content: [
+        "Analyze this single Amazon competitor and produce a compact competitor insight report.",
+        "Use concise, evidence-backed language.",
+        "Return JSON with these top-level keys exactly:",
+        "positive_themes, negative_themes, purchase_drivers, negative_opinions, listing_angles, inspiration_for_target",
+        "",
+        "JSON shape requirements:",
+        '- positive_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
+        '- negative_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
+        '- purchase_drivers: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- negative_opinions: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- listing_angles: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- inspiration_for_target: array of { "label": string, "summary": string, "evidence": string[] }',
+        "",
+        "Rules:",
+        "- Keep each array to at most 4 items.",
+        "- Every evidence entry should be a short review-derived quote or listing-derived paraphrase, no more than 140 characters.",
+        "- positive_themes and negative_themes should focus on what buyers repeatedly praise or criticize about this competitor.",
+        "- purchase_drivers should explain why buyers choose this competitor.",
+        "- negative_opinions should focus on what creates dissatisfaction, risk, or abandonment.",
+        "- listing_angles should explain what this competitor is currently emphasizing in its title/bullets/description.",
+        "- inspiration_for_target should convert the competitor's strengths and weaknesses into practical guidance for the target product.",
+        "- Do not invent product features not supported by the inputs.",
+        "",
+        "Competitor listing inputs:",
+        listingToPromptBlock(competitor),
+        "",
+        "Representative competitor reviews:",
+        representativeReviews || "No competitor reviews provided.",
+      ].join("\n"),
+    },
+  ];
+
+  return messages;
+}
+
+async function callOpenAi<T>(messages: OpenAiMessage[]) {
   const apiKey = requireOpenAiEnv("OPENAI_API_KEY");
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
   const client = new OpenAI({
@@ -281,67 +489,168 @@ async function callOpenAi(messages: OpenAiMessage[]) {
     throw new Error("OpenAI response did not include any content");
   }
 
-  return JSON.parse(content) as AnalysisReportShape;
+  return JSON.parse(content) as T;
 }
 
 function createExportText(report: AnalysisReportShape) {
   const lines: string[] = [];
 
-  lines.push("Amazon Seller VOC Report");
+  lines.push("亚马逊卖家 VOC 分析报告");
   lines.push("");
-  lines.push(`Review count: ${report.dataset_overview.review_count}`);
-  lines.push(`ASIN count: ${report.dataset_overview.asin_count}`);
+  lines.push(`评论数量：${report.dataset_overview.review_count}`);
+  lines.push(`ASIN 数量：${report.dataset_overview.asin_count}`);
   lines.push("");
-  lines.push("Target Positive Themes:");
+  lines.push("目标商品正向主题：");
 
   for (const item of report.target_positive_themes) {
     lines.push(`- ${item.theme}: ${item.summary}`);
   }
 
   lines.push("");
-  lines.push("Competitor Positive Themes:");
+  lines.push("竞品正向主题：");
 
   for (const item of report.competitor_positive_themes) {
     lines.push(`- ${item.theme}: ${item.summary}`);
   }
 
   lines.push("");
-  lines.push("Comparison Opportunities:");
+  lines.push("定位机会：");
 
   for (const item of report.comparison_opportunities) {
     lines.push(`- ${item.label}: ${item.summary}`);
   }
 
   lines.push("");
-  lines.push("Buyer Objections:");
+  lines.push("买家顾虑：");
 
   for (const item of report.buyer_objections) {
     lines.push(`- ${item.label}: ${item.summary}`);
   }
 
   lines.push("");
-  lines.push("Priority Actions:");
+  lines.push("使用场景：");
+
+  for (const item of report.usage_scenarios) {
+    lines.push(`- ${item.label}: ${item.summary}`);
+  }
+
+  lines.push("");
+  lines.push("Where：");
+
+  for (const item of report.usage_where) {
+    lines.push(`- ${item.label}: ${item.summary}`);
+  }
+
+  lines.push("");
+  lines.push("When：");
+
+  for (const item of report.usage_when) {
+    lines.push(`- ${item.label}: ${item.summary}`);
+  }
+
+  lines.push("");
+  lines.push("How：");
+
+  for (const item of report.usage_how) {
+    lines.push(`- ${item.label}: ${item.summary}`);
+  }
+
+  lines.push("");
+  lines.push("What：");
+
+  for (const item of report.product_what) {
+    lines.push(`- ${item.label}: ${item.summary}`);
+  }
+
+  lines.push("");
+  lines.push("卖点分层：");
+
+  for (const item of report.baseline_requirements) {
+    lines.push(`- Baseline｜${item.label}: ${item.summary}`);
+  }
+
+  for (const item of report.performance_levers) {
+    lines.push(`- Performance｜${item.label}: ${item.summary}`);
+  }
+
+  for (const item of report.differentiators) {
+    lines.push(`- Differentiator｜${item.label}: ${item.summary}`);
+  }
+
+  lines.push("");
+  lines.push("本周任务单：");
+
+  for (const item of sortExecutionTasks(report.execution_tasks)) {
+    lines.push(
+      `- [${item.priority.toUpperCase()}][${item.workstream}] ${item.task_title}：${item.concrete_action}`,
+    );
+  }
+
+  lines.push("");
+  lines.push("Listing Draft：");
+  lines.push(`- 标题草案：${report.listing_draft.title_draft}`);
+  lines.push(`- 定位句：${report.listing_draft.positioning_statement}`);
+
+  for (const bullet of report.listing_draft.bullet_drafts) {
+    lines.push(`- Bullet：${bullet}`);
+  }
+
+  lines.push("");
+  lines.push("Image Brief：");
+
+  for (const item of report.image_brief) {
+    lines.push(`- ${item.slot}：${item.goal}｜${item.message}`);
+  }
+
+  lines.push("");
+  lines.push("A+ Brief：");
+
+  for (const item of report.a_plus_brief) {
+    lines.push(`- ${item.module}：${item.goal}｜${item.key_message}`);
+  }
+
+  lines.push("");
+  lines.push("优先执行清单：");
 
   for (const item of sortVocResponseItems(report.voc_response_matrix)) {
-    lines.push(`- [${item.priority.toUpperCase()}][${item.execution_area}] ${item.voc_theme}: ${item.why_now}`);
+    lines.push(`- [${item.priority.toUpperCase()}][${item.execution_area}] ${item.voc_theme}：${item.why_now}`);
   }
 
   lines.push("");
-  lines.push("Image Strategy:");
-  lines.push(`- Hero image: ${report.image_strategy.hero_image}`);
+  lines.push("图片策略：");
+  lines.push(`- 主图：${report.image_strategy.hero_image}`);
 
   for (const line of report.image_strategy.feature_callouts) {
-    lines.push(`- Feature callout: ${line}`);
+    lines.push(`- 功能卖点图：${line}`);
   }
 
   lines.push("");
-  lines.push("Copy Strategy:");
+  lines.push("文案策略：");
 
   for (const line of report.copy_strategy.title_angles) {
-    lines.push(`- Title angle: ${line}`);
+    lines.push(`- 标题角度：${line}`);
   }
 
   return lines.join("\n");
+}
+
+function sortExecutionTasks(items: ExecutionTaskItem[]) {
+  const priorityOrder: Record<ExecutionTaskItem["priority"], number> = {
+    p1: 0,
+    p2: 1,
+    p3: 2,
+  };
+
+  return [...items].sort((left, right) => {
+    const leftPriority = priorityOrder[left.priority] ?? 99;
+    const rightPriority = priorityOrder[right.priority] ?? 99;
+
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority;
+    }
+
+    return left.task_title.localeCompare(right.task_title);
+  });
 }
 
 function sortVocResponseItems(items: VocResponseItem[]) {
@@ -393,7 +702,9 @@ export async function generateAnalysisReportForProject(projectId: string) {
 
     const { data: projectProducts, error: projectProductsError } = await supabase
       .from("project_products")
-      .select("id, role")
+      .select(
+        "id, role, name, asin, market, product_url, current_title, current_bullets, current_description",
+      )
       .eq("project_id", projectId);
 
     if (reviewsError) {
@@ -410,6 +721,10 @@ export async function generateAnalysisReportForProject(projectId: string) {
 
     const roleByProductId = new Map(
       (projectProducts ?? []).map((product) => [product.id, product.role] as const),
+    );
+    const targetProducts = (projectProducts ?? []).filter((product) => product.role === "target");
+    const competitorProducts = (projectProducts ?? []).filter(
+      (product) => product.role === "competitor",
     );
     const targetReviews = reviews.filter(
       (review) => review.project_product_id && roleByProductId.get(review.project_product_id) === "target",
@@ -429,14 +744,49 @@ export async function generateAnalysisReportForProject(projectId: string) {
       competitorOverview,
       targetReviews,
       competitorReviews,
+      targetProducts,
+      competitorProducts,
     });
-    const modelReport = await callOpenAi(prompt);
+    const modelReport = await callOpenAi<AnalysisReportShape>(prompt);
 
     const report: AnalysisReportShape = {
       ...modelReport,
       dataset_overview: datasetOverview,
       target_overview: targetOverview,
       competitor_overview: competitorOverview,
+      target_positive_themes:
+        targetReviews.length > 0 ? modelReport.target_positive_themes ?? [] : [],
+      target_negative_themes:
+        targetReviews.length > 0 ? modelReport.target_negative_themes ?? [] : [],
+      competitor_positive_themes: modelReport.competitor_positive_themes ?? [],
+      competitor_negative_themes: modelReport.competitor_negative_themes ?? [],
+      buyer_desires: modelReport.buyer_desires ?? [],
+      buyer_objections: modelReport.buyer_objections ?? [],
+      usage_scenarios: modelReport.usage_scenarios ?? [],
+      usage_where: modelReport.usage_where ?? [],
+      usage_when: modelReport.usage_when ?? [],
+      usage_how: modelReport.usage_how ?? [],
+      product_what: modelReport.product_what ?? [],
+      user_personas: modelReport.user_personas ?? [],
+      purchase_drivers: modelReport.purchase_drivers ?? [],
+      negative_opinions: modelReport.negative_opinions ?? [],
+      unmet_needs: modelReport.unmet_needs ?? [],
+      baseline_requirements: modelReport.baseline_requirements ?? [],
+      performance_levers: modelReport.performance_levers ?? [],
+      differentiators: modelReport.differentiators ?? [],
+      comparison_opportunities: modelReport.comparison_opportunities ?? [],
+      comparison_risks: modelReport.comparison_risks ?? [],
+      execution_tasks: sortExecutionTasks(modelReport.execution_tasks ?? []),
+      listing_draft: {
+        title_draft: modelReport.listing_draft?.title_draft ?? "",
+        title_rationale: modelReport.listing_draft?.title_rationale ?? "",
+        bullet_drafts: modelReport.listing_draft?.bullet_drafts ?? [],
+        bullet_rationales: modelReport.listing_draft?.bullet_rationales ?? [],
+        positioning_statement:
+          modelReport.listing_draft?.positioning_statement ?? "",
+      },
+      image_brief: modelReport.image_brief ?? [],
+      a_plus_brief: modelReport.a_plus_brief ?? [],
       voc_response_matrix: sortVocResponseItems(modelReport.voc_response_matrix ?? []),
     };
 
@@ -451,11 +801,26 @@ export async function generateAnalysisReportForProject(projectId: string) {
       buyer_desires: report.buyer_desires,
       buyer_objections: report.buyer_objections,
       usage_scenarios: report.usage_scenarios,
+      usage_where: report.usage_where,
+      usage_when: report.usage_when,
+      usage_how: report.usage_how,
+      product_what: report.product_what,
+      user_personas: report.user_personas,
+      purchase_drivers: report.purchase_drivers,
+      negative_opinions: report.negative_opinions,
+      unmet_needs: report.unmet_needs,
+      baseline_requirements: report.baseline_requirements,
+      performance_levers: report.performance_levers,
+      differentiators: report.differentiators,
       comparison_opportunities: report.comparison_opportunities,
       comparison_risks: report.comparison_risks,
     };
 
     const strategyJson = {
+      execution_tasks: report.execution_tasks,
+      listing_draft: report.listing_draft,
+      image_brief: report.image_brief,
+      a_plus_brief: report.a_plus_brief,
       voc_response_matrix: report.voc_response_matrix,
       image_strategy: report.image_strategy,
       copy_strategy: report.copy_strategy,
@@ -504,4 +869,66 @@ export async function generateAnalysisReportForProject(projectId: string) {
 
     throw error;
   }
+}
+
+export async function generateCompetitorInsightForProduct({
+  projectId,
+  productId,
+}: {
+  projectId: string;
+  productId: string;
+}) {
+  const supabase = createAdminSupabaseClient();
+
+  const [{ data: product, error: productError }, { data: reviews, error: reviewsError }] =
+    await Promise.all([
+      supabase
+        .from("project_products")
+        .select(
+          "id, role, name, asin, market, product_url, current_title, current_bullets, current_description",
+        )
+        .eq("project_id", projectId)
+        .eq("id", productId)
+        .single(),
+      supabase
+        .from("reviews")
+        .select(
+          "id, project_product_id, asin, model, review_title, review_body, rating, review_date, country, image_count, has_video",
+        )
+        .eq("project_id", projectId)
+        .eq("project_product_id", productId)
+        .order("review_date", { ascending: false }),
+    ]);
+
+  if (productError || !product) {
+    throw new Error(productError?.message ?? "Competitor product not found");
+  }
+
+  if (product.role !== "competitor") {
+    throw new Error("Only competitor products support competitor insight analysis");
+  }
+
+  if (reviewsError) {
+    throw new Error(reviewsError.message);
+  }
+
+  if (!reviews || reviews.length === 0) {
+    throw new Error("No reviews found for this competitor");
+  }
+
+  const modelInsight = await callOpenAi<CompetitorInsightShape>(
+    buildCompetitorInsightPrompt({
+      competitor: product,
+      reviews,
+    }),
+  );
+
+  return {
+    positive_themes: modelInsight.positive_themes ?? [],
+    negative_themes: modelInsight.negative_themes ?? [],
+    purchase_drivers: modelInsight.purchase_drivers ?? [],
+    negative_opinions: modelInsight.negative_opinions ?? [],
+    listing_angles: modelInsight.listing_angles ?? [],
+    inspiration_for_target: modelInsight.inspiration_for_target ?? [],
+  } as CompetitorInsightShape;
 }

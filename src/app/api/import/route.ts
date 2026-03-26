@@ -37,20 +37,53 @@ export async function POST(request: Request) {
       const reviewSourceAsin = String(formData.get("reviewSourceAsin") ?? "").trim();
       const reviewSourceUrl = String(formData.get("reviewSourceUrl") ?? "").trim();
       const reviewSourceMarket = String(formData.get("reviewSourceMarket") ?? "").trim();
+      const selectedReviewSourceId = String(
+        formData.get("selectedReviewSourceId") ?? "",
+      ).trim();
+      const reviewSourceProductId = String(
+        formData.get("reviewSourceProductId") ?? "",
+      ).trim();
+      const presetCompetitorsRaw = String(formData.get("presetCompetitors") ?? "").trim();
+      let presetCompetitors:
+        | Array<{
+            localId?: string;
+            name?: string;
+            asin?: string;
+            url?: string;
+            market?: string;
+          }>
+        | undefined;
 
-      if (!projectName) {
-        if (!existingProjectId) {
+      if (presetCompetitorsRaw) {
+        try {
+          const parsed = JSON.parse(presetCompetitorsRaw) as unknown;
+
+          if (Array.isArray(parsed)) {
+            presetCompetitors = parsed
+              .filter((item) => typeof item === "object" && item !== null)
+              .map((item) => {
+                const row = item as Record<string, unknown>;
+                return {
+                  localId: String(row.localId ?? "").trim(),
+                  name: String(row.name ?? "").trim(),
+                  asin: String(row.asin ?? "").trim(),
+                  url: String(row.url ?? "").trim(),
+                  market: String(row.market ?? "").trim(),
+                };
+              });
+          }
+        } catch {
           return NextResponse.json(
-            { error: "Project name is required before importing to Supabase." },
+            { error: "presetCompetitors must be valid JSON." },
             { status: 400 },
           );
         }
       }
 
-      if (!targetProductName) {
+      if (!projectName) {
         if (!existingProjectId) {
           return NextResponse.json(
-            { error: "Target product name is required before importing to Supabase." },
+            { error: "Project name is required before importing to Supabase." },
             { status: 400 },
           );
         }
@@ -75,6 +108,7 @@ export async function POST(request: Request) {
         ? await appendImportedReviewsToProject(parsed, {
             existingProjectId,
             targetProductId: targetProductId || undefined,
+            reviewSourceProductId: reviewSourceProductId || undefined,
             reviewSourceRole: reviewSourceRole as "target" | "competitor",
             reviewSourceName: reviewSourceName || undefined,
             reviewSourceAsin: reviewSourceAsin || undefined,
@@ -93,6 +127,8 @@ export async function POST(request: Request) {
             reviewSourceAsin: reviewSourceAsin || undefined,
             reviewSourceUrl: reviewSourceUrl || undefined,
             reviewSourceMarket: reviewSourceMarket || undefined,
+            selectedReviewSourceId: selectedReviewSourceId || undefined,
+            presetCompetitors,
           });
       const preview = await createImportPreview(file.name, buffer);
 

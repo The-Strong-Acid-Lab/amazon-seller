@@ -1,1 +1,45 @@
 @import "tailwindcss";
+
+:root {
+  --page-ink: #1b1711;
+  --page-muted: #6e665b;
+  --page-border: rgba(85, 74, 58, 0.12);
+  --page-surface: rgba(255, 252, 246, 0.84);
+  --page-surface-strong: rgba(255, 248, 236, 0.96);
+  --page-accent: #9a6437;
+  --page-accent-soft: rgba(154, 100, 55, 0.12);
+}
+
+html,
+body {
+  background:
+    radial-gradient(circle at top left, rgba(214, 181, 146, 0.22), transparent 32%),
+    radial-gradient(circle at top right, rgba(188, 215, 207, 0.18), transparent 28%),
+    linear-gradient(180deg, #f9f4eb 0%, #f5efe4 46%, #f7f3ec 100%);
+  color: var(--page-ink);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(76, 63, 47, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(76, 63, 47, 0.03) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.45), transparent 82%);
+}
+
+::selection {
+  background: rgba(154, 100, 55, 0.18);
+}
+
+.scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
