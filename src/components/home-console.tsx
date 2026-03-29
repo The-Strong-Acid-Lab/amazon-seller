@@ -20,9 +20,7 @@ export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
   const analyzedCount = projects.filter(
     (project) => project.latestReportAt,
   ).length;
-  const [showCreateProject, setShowCreateProject] = useState(
-    projects.length === 0,
-  );
+  const [showCreateProject, setShowCreateProject] = useState(false);
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
 
   return (
@@ -47,7 +45,7 @@ export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
                 控制台总览
               </h1>
               <p className="max-w-4xl text-sm leading-7 text-[var(--page-muted)]">
-                一个项目只服务一个目标商品。先导入评论与竞品，再输出
+                一个项目只服务一个我的商品。先导入评论与竞品，再输出
                 listing、图片和 A+ 的执行方案。
               </p>
 

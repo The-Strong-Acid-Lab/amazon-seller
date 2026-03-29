@@ -500,7 +500,7 @@ function createExportText(report: AnalysisReportShape) {
   lines.push(`评论数量：${report.dataset_overview.review_count}`);
   lines.push(`ASIN 数量：${report.dataset_overview.asin_count}`);
   lines.push("");
-  lines.push("目标商品正向主题：");
+  lines.push("我的商品正向主题：");
 
   for (const item of report.target_positive_themes) {
     lines.push(`- ${item.theme}: ${item.summary}`);

@@ -38,8 +38,12 @@ export function AnalyzeProjectButton({ projectId }: { projectId: string }) {
 
   return (
     <div className="grid gap-3">
-      <Button className="rounded-full px-5" disabled={isLoading} onClick={handleAnalyze}>
-        {isLoading ? "正在分析评论..." : "开始 LLM 分析"}
+      <Button
+        className="rounded-full px-5"
+        disabled={isLoading}
+        onClick={handleAnalyze}
+      >
+        {isLoading ? "正在分析评论..." : "开始分析"}
       </Button>
       {error ? (
         <Alert variant="destructive">

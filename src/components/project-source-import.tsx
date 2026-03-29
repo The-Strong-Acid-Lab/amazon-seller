@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 
@@ -14,7 +14,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ImportPreview } from "@/lib/review-import";
 import { cn } from "@/lib/utils";
 
@@ -32,8 +31,6 @@ type ImportResponse = ImportPreview & {
 };
 
 type SourceImportFormValues = {
-  reviewSourceRole: "target" | "competitor";
-  reviewSourceName: string;
   reviewSourceAsin: string;
   reviewSourceUrl: string;
   reviewSourceMarket: string;
@@ -42,17 +39,11 @@ type SourceImportFormValues = {
 export function ProjectSourceImport({
   projectId,
   targetProductId,
-  targetProductName,
   targetMarket,
-  targetProductAsin,
-  targetProductUrl,
 }: {
   projectId: string;
   targetProductId: string;
-  targetProductName: string;
   targetMarket: string;
-  targetProductAsin?: string | null;
-  targetProductUrl?: string | null;
 }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
@@ -63,35 +54,16 @@ export function ProjectSourceImport({
   const [isSaving, setIsSaving] = useState(false);
   const {
     register,
-    setValue,
     trigger,
     watch,
     formState: { errors },
   } = useForm<SourceImportFormValues>({
     defaultValues: {
-      reviewSourceRole: "competitor",
-      reviewSourceName: "",
       reviewSourceAsin: "",
       reviewSourceUrl: "",
       reviewSourceMarket: targetMarket || "US",
     },
   });
-
-  const reviewSourceRole = watch("reviewSourceRole");
-  const reviewSourceName = watch("reviewSourceName");
-  const reviewSourceAsin = watch("reviewSourceAsin");
-  const reviewSourceUrl = watch("reviewSourceUrl");
-  const reviewSourceMarket = watch("reviewSourceMarket");
-
-  useEffect(() => {
-    if (!file || reviewSourceRole !== "competitor" || reviewSourceName) {
-      return;
-    }
-
-    setValue("reviewSourceName", file.name.replace(/\.[^.]+$/, "").trim(), {
-      shouldDirty: true,
-    });
-  }, [file, reviewSourceName, reviewSourceRole, setValue]);
 
   async function handlePreview() {
     if (!file) {
@@ -133,15 +105,13 @@ export function ProjectSourceImport({
       return;
     }
 
-    if (reviewSourceRole === "competitor") {
-      const isValid = await trigger(["reviewSourceName", "reviewSourceMarket"], {
-        shouldFocus: true,
-      });
+    const isValid = await trigger(["reviewSourceMarket"], {
+      shouldFocus: true,
+    });
 
-      if (!isValid) {
-        setError("请先补全标红的竞品字段。");
-        return;
-      }
+    if (!isValid) {
+      setError("请先补全标红的竞品字段。");
+      return;
     }
 
     setIsSaving(true);
@@ -154,27 +124,19 @@ export function ProjectSourceImport({
       formData.append("mode", "import");
       formData.append("existingProjectId", projectId);
       formData.append("targetProductId", targetProductId);
-      formData.append("reviewSourceRole", reviewSourceRole);
-      formData.append(
-        "reviewSourceName",
-        reviewSourceRole === "target" ? targetProductName : reviewSourceName.trim(),
-      );
-      formData.append(
-        "reviewSourceAsin",
-        reviewSourceRole === "target"
-          ? (targetProductAsin ?? "").trim()
-          : reviewSourceAsin.trim(),
-      );
-      formData.append(
-        "reviewSourceUrl",
-        reviewSourceRole === "target"
-          ? (targetProductUrl ?? "").trim()
-          : reviewSourceUrl.trim(),
-      );
-      formData.append(
-        "reviewSourceMarket",
-        reviewSourceRole === "target" ? targetMarket.trim() : reviewSourceMarket.trim(),
-      );
+      formData.append("reviewSourceRole", "competitor");
+      const reviewSourceAsin = watch("reviewSourceAsin").trim();
+      const reviewSourceUrl = watch("reviewSourceUrl").trim();
+      const reviewSourceMarket = watch("reviewSourceMarket").trim();
+      const reviewSourceName =
+        reviewSourceAsin ||
+        reviewSourceUrl ||
+        file.name.replace(/\.[^.]+$/, "").trim() ||
+        "未命名竞品";
+      formData.append("reviewSourceName", reviewSourceName);
+      formData.append("reviewSourceAsin", reviewSourceAsin);
+      formData.append("reviewSourceUrl", reviewSourceUrl);
+      formData.append("reviewSourceMarket", reviewSourceMarket);
 
       const response = await fetch("/api/import", {
         method: "POST",
@@ -202,76 +164,39 @@ export function ProjectSourceImport({
       <CardHeader>
         <CardTitle>追加评论来源</CardTitle>
         <CardDescription>
-          在当前项目里继续挂目标商品评论或新的竞品评论，不再新建 project。
+          在当前项目里继续追加新的竞品评论来源，不再新建 project。
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-5">
-        <Tabs value={reviewSourceRole}>
-          <TabsList className="w-fit">
-            <TabsTrigger
-              active={reviewSourceRole === "target"}
-              value="target"
-              onClick={() => setValue("reviewSourceRole", "target", { shouldDirty: true })}
-            >
-              目标商品评论
-            </TabsTrigger>
-            <TabsTrigger
-              active={reviewSourceRole === "competitor"}
-              value="competitor"
-              onClick={() => setValue("reviewSourceRole", "competitor", { shouldDirty: true })}
-            >
-              竞品评论
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="target">
-            <div className="grid gap-4 rounded-2xl border border-stone-200 bg-stone-50 p-4 md:grid-cols-2">
-              <ReadOnlyField label="来源商品名称" value={targetProductName} />
-              <ReadOnlyField label="来源市场" value={targetMarket} />
-              <ReadOnlyField label="来源 ASIN" value={targetProductAsin || "未填写"} />
-              <ReadOnlyField label="来源 URL" value={targetProductUrl || "未填写"} />
-            </div>
-          </TabsContent>
-
-          <TabsContent value="competitor">
-            <div className="grid gap-4 md:grid-cols-2">
-              <FieldBlock error={errors.reviewSourceName?.message} label="竞品名称" required>
-                <Input
-                  placeholder="例如: 某竞品冥想椅"
-                  {...register("reviewSourceName", {
-                    validate: (value) => {
-                      if (watch("reviewSourceRole") === "competitor" && !value.trim()) {
-                        return "请填写竞品名称。";
-                      }
-                      return true;
-                    },
-                  })}
-                  aria-invalid={Boolean(errors.reviewSourceName)}
-                />
-              </FieldBlock>
-              <FieldBlock error={errors.reviewSourceMarket?.message} label="竞品市场" required>
-                <Input
-                  placeholder="例如: US"
-                  {...register("reviewSourceMarket", {
-                    validate: (value) => {
-                      if (watch("reviewSourceRole") === "competitor" && !value.trim()) {
-                        return "请填写竞品市场。";
-                      }
-                      return true;
-                    },
-                  })}
-                  aria-invalid={Boolean(errors.reviewSourceMarket)}
-                />
-              </FieldBlock>
-              <FieldBlock label="竞品 ASIN（可空）">
-                <Input placeholder="如果文件本身有，也可以不填" {...register("reviewSourceAsin")} />
-              </FieldBlock>
-              <FieldBlock label="竞品 URL（可空）">
-                <Input placeholder="https://www.amazon.com/..." {...register("reviewSourceUrl")} />
-              </FieldBlock>
-            </div>
-          </TabsContent>
-        </Tabs>
+        <div className="grid gap-4 md:grid-cols-2">
+          <FieldBlock label="竞品 ASIN（可空）">
+            <Input
+              placeholder="如果文件本身有，也可以不填"
+              {...register("reviewSourceAsin")}
+            />
+          </FieldBlock>
+          <FieldBlock
+            error={errors.reviewSourceMarket?.message}
+            label="竞品市场"
+            required
+          >
+            <Input
+              placeholder="例如: US"
+              {...register("reviewSourceMarket", {
+                required: "请填写竞品市场。",
+                validate: (value) =>
+                  value.trim().length > 0 || "请填写竞品市场。",
+              })}
+              aria-invalid={Boolean(errors.reviewSourceMarket)}
+            />
+          </FieldBlock>
+          <FieldBlock className="md:col-span-2" label="竞品 URL（可空）">
+            <Input
+              placeholder="https://www.amazon.com/..."
+              {...register("reviewSourceUrl")}
+            />
+          </FieldBlock>
+        </div>
 
         <div className="grid gap-3 rounded-3xl border border-dashed border-stone-300 bg-stone-50 p-5">
           <div className="grid gap-1">
@@ -289,7 +214,11 @@ export function ProjectSourceImport({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button className="rounded-full px-5" disabled={isPreviewLoading} onClick={handlePreview}>
+          <Button
+            className="rounded-full px-5"
+            disabled={isPreviewLoading}
+            onClick={handlePreview}
+          >
             {isPreviewLoading ? "正在解析..." : "解析预览"}
           </Button>
           <Button
@@ -320,9 +249,18 @@ export function ProjectSourceImport({
         {preview ? (
           <div className="grid gap-4 rounded-2xl border border-stone-200 bg-stone-50 p-4 md:grid-cols-4">
             <PreviewStat label="评论数" value={String(preview.totalRows)} />
-            <PreviewStat label="ASIN 数" value={String(preview.stats.uniqueAsins)} />
-            <PreviewStat label="起始日期" value={preview.stats.dateRange.from ?? "-"} />
-            <PreviewStat label="结束日期" value={preview.stats.dateRange.to ?? "-"} />
+            <PreviewStat
+              label="ASIN 数"
+              value={String(preview.stats.uniqueAsins)}
+            />
+            <PreviewStat
+              label="起始日期"
+              value={preview.stats.dateRange.from ?? "-"}
+            />
+            <PreviewStat
+              label="结束日期"
+              value={preview.stats.dateRange.to ?? "-"}
+            />
           </div>
         ) : null}
       </CardContent>
@@ -334,32 +272,23 @@ function FieldBlock({
   label,
   error,
   required,
+  className,
   children,
 }: {
   label: string;
   error?: string;
   required?: boolean;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid gap-2">
+    <div className={cn("grid gap-2", className)}>
       <p className={cn("text-sm font-medium", error ? "text-rose-700" : "text-stone-900")}>
         {label}
         {required ? <span className="ml-1 text-rose-700">*</span> : null}
       </p>
       {children}
       {error ? <p className="text-xs leading-5 text-rose-700">{error}</p> : null}
-    </div>
-  );
-}
-
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid gap-2">
-      <p className="text-sm font-medium text-stone-900">{label}</p>
-      <div className="rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm text-stone-600">
-        {value}
-      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { CompetitorInsightShape } from "@/lib/analysis";
+import { InsightListCard, LabelSummaryCard } from "@/components/project-page/sections";
 import { ProductListingEditor } from "@/components/product-listing-editor";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -261,7 +262,7 @@ function CompetitorDetailContent({
         <DialogHeader>
           <DialogTitle>{competitor.name ?? "未命名竞品"}</DialogTitle>
           <DialogDescription>
-            先看这个竞品自己的评论结构和 listing，再决定它对目标商品的参考价值。
+            先看这个竞品自己的评论结构和 listing，再决定它对我的商品的参考价值。
           </DialogDescription>
         </DialogHeader>
         <DialogClose className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 text-xl text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900">
@@ -274,8 +275,14 @@ function CompetitorDetailContent({
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <MiniMetric label="评论数" value={String(reviews.length)} />
             <MiniMetric label="导入次数" value={String(importCount)} />
-            <MiniMetric label="评分分布" value={formatRatingDistribution(stats.ratingDistribution)} />
-            <MiniMetric label="时间范围" value={formatDateRange(stats.dateFrom, stats.dateTo)} />
+            <MiniMetric
+              label="评分分布"
+              value={formatRatingDistribution(stats.ratingDistribution)}
+            />
+            <MiniMetric
+              label="时间范围"
+              value={formatDateRange(stats.dateFrom, stats.dateTo)}
+            />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
@@ -284,11 +291,21 @@ function CompetitorDetailContent({
                 <CardTitle>基础信息</CardTitle>
               </CardHeader>
               <CardContent className="grid gap-2 text-sm text-stone-700">
-                <p><span className="font-medium text-stone-900">ASIN:</span> {competitor.asin ?? "-"}</p>
-                <p><span className="font-medium text-stone-900">市场:</span> {competitor.market ?? "-"}</p>
-                <p><span className="font-medium text-stone-900">状态:</span> {competitor.is_launched ? "已上线" : "未上线"}</p>
+                <p>
+                  <span className="font-medium text-stone-900">ASIN:</span>{" "}
+                  {competitor.asin ?? "-"}
+                </p>
+                <p>
+                  <span className="font-medium text-stone-900">市场:</span>{" "}
+                  {competitor.market ?? "-"}
+                </p>
+                <p>
+                  <span className="font-medium text-stone-900">状态:</span>{" "}
+                  {competitor.is_launched ? "已上线" : "未上线"}
+                </p>
                 <p className="break-all">
-                  <span className="font-medium text-stone-900">URL:</span> {competitor.product_url ?? "-"}
+                  <span className="font-medium text-stone-900">URL:</span>{" "}
+                  {competitor.product_url ?? "-"}
                 </p>
               </CardContent>
             </Card>
@@ -301,8 +318,16 @@ function CompetitorDetailContent({
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-4">
-                <ReviewSampleGroup title="高分样本" items={positiveSamples} emptyLabel="暂无高分样本。" />
-                <ReviewSampleGroup title="低分样本" items={negativeSamples} emptyLabel="暂无低分样本。" />
+                <ReviewSampleGroup
+                  title="高分样本"
+                  items={positiveSamples}
+                  emptyLabel="暂无高分样本。"
+                />
+                <ReviewSampleGroup
+                  title="低分样本"
+                  items={negativeSamples}
+                  emptyLabel="暂无低分样本。"
+                />
               </CardContent>
             </Card>
           </div>
@@ -313,7 +338,8 @@ function CompetitorDetailContent({
                 <div>
                   <CardTitle>竞品洞察</CardTitle>
                   <CardDescription>
-                    单独分析这个竞品的评论和 listing，看看它强在哪、弱在哪，以及对 target 有什么启发。
+                    单独分析这个竞品的评论和
+                    listing，看看它强在哪、弱在哪，以及对 target 有什么启发。
                   </CardDescription>
                 </div>
                 <Button
@@ -342,12 +368,15 @@ function CompetitorDetailContent({
 
               {cachedUpdatedAt ? (
                 <p className="text-sm text-stone-500">
-                  当前展示的是已保存洞察，更新时间：{formatDateTime(cachedUpdatedAt)}
+                  当前展示的是已保存洞察，更新时间：
+                  {formatDateTime(cachedUpdatedAt)}
                 </p>
               ) : null}
 
               {isLoadingCached ? (
-                <p className="text-sm text-stone-500">正在读取已保存的竞品洞察...</p>
+                <p className="text-sm text-stone-500">
+                  正在读取已保存的竞品洞察...
+                </p>
               ) : insight ? (
                 <div className="grid gap-6">
                   <div className="grid gap-6 xl:grid-cols-2">
@@ -381,13 +410,14 @@ function CompetitorDetailContent({
                     />
                     <LabelSummaryCard
                       items={insight.inspiration_for_target}
-                      title="对目标商品的启发"
+                      title="对我的商品的启发"
                     />
                   </div>
                 </div>
               ) : (
                 <p className="text-sm text-stone-500">
-                  当前还没有已保存的竞品洞察。先点上面的“生成竞品洞察”，再看这个竞品自己的主题、驱动因素和对 target 的启发。
+                  当前还没有已保存的竞品洞察。先点上面的“生成竞品洞察”，再看这个竞品自己的主题、驱动因素和对
+                  target 的启发。
                 </p>
               )}
             </CardContent>
@@ -398,7 +428,8 @@ function CompetitorDetailContent({
               <CardHeader>
                 <CardTitle>Listing 录入说明</CardTitle>
                 <CardDescription>
-                  这里先手动粘贴该竞品的标题、bullets 和描述。重新分析后，系统会把评论和 listing 一起看。
+                  这里先手动粘贴该竞品的标题、bullets
+                  和描述。重新分析后，系统会把评论和 listing 一起看。
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-3 text-sm leading-7 text-stone-700">
@@ -419,83 +450,6 @@ function CompetitorDetailContent({
         </DialogClose>
       </DialogFooter>
     </div>
-  );
-}
-
-function InsightListCard({
-  title,
-  description,
-  items,
-}: {
-  title: string;
-  description?: string;
-  items: Array<{ theme: string; summary: string; evidence: string[] }>;
-}) {
-  return (
-    <Card className="rounded-[1.5rem]">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {description ? <CardDescription>{description}</CardDescription> : null}
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        {items.length > 0 ? (
-          items.map((item) => (
-            <div key={item.theme} className="rounded-2xl border border-stone-200 p-4">
-              <p className="font-semibold text-stone-950">{item.theme}</p>
-              <p className="mt-2 text-sm leading-6 text-stone-700">{item.summary}</p>
-              {item.evidence.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {item.evidence.map((evidence) => (
-                    <Badge key={`${item.theme}-${evidence}`} className="rounded-full" variant="outline">
-                      {evidence}
-                    </Badge>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ))
-        ) : (
-          <p className="text-sm text-stone-500">还没有内容。</p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function LabelSummaryCard({
-  title,
-  items,
-}: {
-  title: string;
-  items: Array<{ label: string; summary: string; evidence?: string[] }>;
-}) {
-  return (
-    <Card className="rounded-[1.5rem]">
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        {items.length > 0 ? (
-          items.map((item) => (
-            <div key={item.label} className="rounded-2xl border border-stone-200 p-4">
-              <p className="font-semibold text-stone-950">{item.label}</p>
-              <p className="mt-2 text-sm leading-6 text-stone-700">{item.summary}</p>
-              {item.evidence && item.evidence.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {item.evidence.map((evidence) => (
-                    <Badge key={`${item.label}-${evidence}`} className="rounded-full" variant="outline">
-                      {evidence}
-                    </Badge>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ))
-        ) : (
-          <p className="text-sm text-stone-500">还没有内容。</p>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 

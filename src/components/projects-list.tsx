@@ -82,26 +82,40 @@ export function ProjectsList({
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline" className="rounded-md border-[var(--page-border)] bg-white/75 font-mono text-[11px] text-[var(--page-muted)]">
+                  <Badge
+                    variant="outline"
+                    className="rounded-md border-[var(--page-border)] bg-white/75 font-mono text-[11px] text-[var(--page-muted)]"
+                  >
                     {project.target_market ?? "-"}
                   </Badge>
-                  <Badge variant="secondary" className="rounded-md border border-transparent bg-[var(--page-accent-soft)] font-mono text-[11px] text-[#8d5b32]">
+                  <Badge
+                    variant="secondary"
+                    className="rounded-md border border-transparent bg-[var(--page-accent-soft)] font-mono text-[11px] text-[#8d5b32]"
+                  >
                     {project.latestReportAt ? "已分析" : "待分析"}
                   </Badge>
                 </div>
-                <Badge variant="outline" className="rounded-md border-[var(--page-border)] bg-white/75 font-mono text-[11px] text-[var(--page-muted)]">
+                <Badge
+                  variant="outline"
+                  className="rounded-md border-[var(--page-border)] bg-white/75 font-mono text-[11px] text-[var(--page-muted)]"
+                >
                   {project.status}
                 </Badge>
               </div>
-              <CardTitle className="line-clamp-2 text-lg">{project.name}</CardTitle>
+              <CardTitle className="line-clamp-2 text-lg">
+                {project.name}
+              </CardTitle>
               <CardDescription className="line-clamp-2 text-[var(--page-muted)]">
-                {project.product_name ?? "未命名目标商品"}
+                {project.product_name ?? "未命名我的商品"}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-5">
               <div className="grid grid-cols-3 gap-3">
                 <MiniStat label="评论" value={String(project.reviewCount)} />
-                <MiniStat label="竞品" value={String(project.competitorCount)} />
+                <MiniStat
+                  label="竞品"
+                  value={String(project.competitorCount)}
+                />
                 <MiniStat
                   label="分析"
                   value={project.latestReportAt ? "已生成" : "未开始"}
@@ -111,7 +125,10 @@ export function ProjectsList({
                 创建于 {formatDate(project.created_at)}
               </div>
               <div className="flex flex-wrap gap-3">
-                <Link className="flex-1 min-w-[8rem]" href={`/projects/${project.id}`}>
+                <Link
+                  className="flex-1 min-w-[8rem]"
+                  href={`/projects/${project.id}`}
+                >
                   <Button className="w-full rounded-full" variant="outline">
                     查看项目
                   </Button>
@@ -128,9 +145,7 @@ export function ProjectsList({
                     setProjectToDelete(project);
                   }}
                 >
-                  <DialogTrigger
-                    className="inline-flex h-10 items-center justify-center rounded-full border border-rose-200 bg-white/75 px-4 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50"
-                  >
+                  <DialogTrigger className="inline-flex h-10 items-center justify-center rounded-full border border-rose-200 bg-white/75 px-4 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50">
                     删除项目
                   </DialogTrigger>
                   <DialogOverlay />
@@ -138,15 +153,17 @@ export function ProjectsList({
                     <DialogHeader>
                       <DialogTitle>确认删除这个项目？</DialogTitle>
                       <DialogDescription>
-                        删除后会连同这个项目下的目标商品、竞品、评论文件、评论内容、
+                        删除后会连同这个项目下的我的商品、竞品、评论文件、评论内容、
                         分析任务和分析报告一起删除，不能恢复。
                       </DialogDescription>
                     </DialogHeader>
 
                     <div className="mt-4 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-                      <p className="text-sm font-medium text-stone-900">{project.name}</p>
+                      <p className="text-sm font-medium text-stone-900">
+                        {project.name}
+                      </p>
                       <p className="mt-1 text-sm text-stone-600">
-                        {project.product_name ?? "未命名目标商品"}
+                        {project.product_name ?? "未命名我的商品"}
                       </p>
                     </div>
 
@@ -192,7 +209,9 @@ export function ProjectsList({
             <span className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-[#b9936f] bg-white text-3xl leading-none">
               +
             </span>
-            <span className="text-sm font-semibold tracking-[0.16em]">新建</span>
+            <span className="text-sm font-semibold tracking-[0.16em]">
+              新建
+            </span>
           </button>
         ) : null}
       </div>

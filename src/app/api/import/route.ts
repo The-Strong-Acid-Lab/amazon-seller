@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 
 import {
+  appendUploadedReviewFileToProject,
   appendImportedReviewsToProject,
+  persistUploadedReviewFile,
   persistImportedReviews,
 } from "@/lib/import-persistence";
 import { createImportPreview, parseReviewImport } from "@/lib/review-import";
@@ -23,7 +25,7 @@ export async function POST(request: Request) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const mode = String(formData.get("mode") ?? "preview");
 
-    if (mode === "import") {
+    if (mode === "import" || mode === "upload") {
       const existingProjectId = String(formData.get("existingProjectId") ?? "").trim();
       const targetProductId = String(formData.get("targetProductId") ?? "").trim();
       const projectName = String(formData.get("projectName") ?? "").trim();
@@ -43,50 +45,20 @@ export async function POST(request: Request) {
       const reviewSourceProductId = String(
         formData.get("reviewSourceProductId") ?? "",
       ).trim();
-      const presetCompetitorsRaw = String(formData.get("presetCompetitors") ?? "").trim();
-      let presetCompetitors:
-        | Array<{
-            localId?: string;
-            name?: string;
-            asin?: string;
-            url?: string;
-            market?: string;
-          }>
-        | undefined;
+      const presetCompetitors = parsePresetCompetitors(
+        String(formData.get("presetCompetitors") ?? "").trim(),
+      );
 
-      if (presetCompetitorsRaw) {
-        try {
-          const parsed = JSON.parse(presetCompetitorsRaw) as unknown;
-
-          if (Array.isArray(parsed)) {
-            presetCompetitors = parsed
-              .filter((item) => typeof item === "object" && item !== null)
-              .map((item) => {
-                const row = item as Record<string, unknown>;
-                return {
-                  localId: String(row.localId ?? "").trim(),
-                  name: String(row.name ?? "").trim(),
-                  asin: String(row.asin ?? "").trim(),
-                  url: String(row.url ?? "").trim(),
-                  market: String(row.market ?? "").trim(),
-                };
-              });
-          }
-        } catch {
-          return NextResponse.json(
-            { error: "presetCompetitors must be valid JSON." },
-            { status: 400 },
-          );
-        }
-      }
-
-      if (!projectName) {
-        if (!existingProjectId) {
-          return NextResponse.json(
-            { error: "Project name is required before importing to Supabase." },
-            { status: 400 },
-          );
-        }
+      if (!projectName && !existingProjectId) {
+        return NextResponse.json(
+          {
+            error:
+              mode === "upload"
+                ? "Project name is required before uploading to Supabase."
+                : "Project name is required before importing to Supabase.",
+          },
+          { status: 400 },
+        );
       }
 
       if (reviewSourceRole !== "target" && reviewSourceRole !== "competitor") {
@@ -98,9 +70,56 @@ export async function POST(request: Request) {
 
       if (reviewSourceRole === "competitor" && !reviewSourceName) {
         return NextResponse.json(
-          { error: "Review source product name is required before importing." },
+          {
+            error:
+              mode === "upload"
+                ? "Review source product name is required before uploading."
+                : "Review source product name is required before importing.",
+          },
           { status: 400 },
         );
+      }
+
+      if (mode === "upload") {
+        const persisted = existingProjectId
+          ? await appendUploadedReviewFileToProject({
+              existingProjectId,
+              targetProductId: targetProductId || undefined,
+              reviewSourceProductId: reviewSourceProductId || undefined,
+              reviewSourceRole: reviewSourceRole as "target" | "competitor",
+              reviewSourceName: reviewSourceName || undefined,
+              reviewSourceAsin: reviewSourceAsin || undefined,
+              reviewSourceUrl: reviewSourceUrl || undefined,
+              reviewSourceMarket: reviewSourceMarket || undefined,
+              fileName: file.name,
+              fileType: inferFileType(file),
+              fileBuffer: buffer,
+              fileMimeType: file.type || undefined,
+            })
+          : await persistUploadedReviewFile({
+              projectName,
+              targetProductName,
+              targetProductAsin: targetProductAsin || undefined,
+              targetProductUrl: targetProductUrl || undefined,
+              targetMarket: targetMarket || undefined,
+              targetIsLaunched,
+              reviewSourceRole: reviewSourceRole as "target" | "competitor",
+              reviewSourceName,
+              reviewSourceAsin: reviewSourceAsin || undefined,
+              reviewSourceUrl: reviewSourceUrl || undefined,
+              reviewSourceMarket: reviewSourceMarket || undefined,
+              selectedReviewSourceId: selectedReviewSourceId || undefined,
+              presetCompetitors,
+              fileName: file.name,
+              fileType: inferFileType(file),
+              fileBuffer: buffer,
+              fileMimeType: file.type || undefined,
+            });
+
+        return NextResponse.json({
+          persisted,
+          uploadOnly: true,
+        });
       }
 
       const parsed = await parseReviewImport(file.name, buffer);
@@ -147,4 +166,48 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: message }, { status: 400 });
   }
+}
+
+function parsePresetCompetitors(raw: string) {
+  if (!raw) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (!Array.isArray(parsed)) {
+      return undefined;
+    }
+
+    return parsed
+      .filter((item) => typeof item === "object" && item !== null)
+      .map((item) => {
+        const row = item as Record<string, unknown>;
+
+        return {
+          localId: String(row.localId ?? "").trim(),
+          name: String(row.name ?? "").trim(),
+          asin: String(row.asin ?? "").trim(),
+          url: String(row.url ?? "").trim(),
+          market: String(row.market ?? "").trim(),
+        };
+      });
+  } catch {
+    throw new Error("presetCompetitors must be valid JSON.");
+  }
+}
+
+function inferFileType(file: File) {
+  const lowerName = file.name.toLowerCase();
+
+  if (lowerName.endsWith(".xlsx")) {
+    return "xlsx";
+  }
+
+  if (lowerName.endsWith(".csv")) {
+    return "csv";
+  }
+
+  return file.type || "unknown";
 }
