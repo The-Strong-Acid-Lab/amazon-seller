@@ -33,6 +33,16 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
+type AnalysisRunStatus = "queued" | "running" | "completed" | "failed" | "pending";
+type AnalysisRunStage =
+  | "queued"
+  | "normalizing"
+  | "loading_reviews"
+  | "llm_analyzing"
+  | "writing_report"
+  | "completed"
+  | "failed";
+
 function asReport(latestReport: {
   summary_json: unknown;
   strategy_json: unknown;
@@ -129,6 +139,17 @@ export default async function ProjectPage({
       importFiles: data.importFiles,
       projectProducts: data.projectProducts,
     });
+    const latestAnalysisStatus: AnalysisRunStatus =
+      data.latestAnalysisRun?.status ??
+      (data.latestReport ? "completed" : "pending");
+    const latestAnalysisStage = resolveAnalysisStage({
+      status: latestAnalysisStatus,
+      stage: data.latestAnalysisRun?.stage ?? null,
+    });
+    const latestAnalysisProgress = resolveAnalysisProgress({
+      status: latestAnalysisStatus,
+      progress: data.latestAnalysisRun?.progress ?? null,
+    });
     const reportContext = buildReportContext({
       latestReportAt: data.latestReport?.created_at ?? null,
       importFiles: data.importFiles,
@@ -166,7 +187,11 @@ export default async function ProjectPage({
             </div>
 
             <div className="grid gap-3">
-              <AnalyzeProjectButton projectId={data.project.id} />
+              <AnalyzeProjectButton
+                initialRunError={data.latestAnalysisRun?.error_message ?? null}
+                initialRunStatus={data.latestAnalysisRun?.status ?? null}
+                projectId={data.project.id}
+              />
               <ExportProjectReportButton
                 disabled={!data.latestReport?.export_text}
                 projectId={data.project.id}
@@ -199,6 +224,65 @@ export default async function ProjectPage({
               </AlertDescription>
             </Alert>
           ) : null}
+
+          <Card className="rounded-[2rem]">
+            <CardHeader>
+              <CardTitle>分析任务状态</CardTitle>
+              <CardDescription>
+                这里显示最近一次分析任务的状态和时间。失败时可以直接点右上角“重新分析”。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <MetricCard
+                label="当前状态"
+                value={formatAnalysisRunStatus(latestAnalysisStatus)}
+              />
+              <MetricCard
+                label="当前阶段"
+                value={formatAnalysisRunStage(latestAnalysisStage)}
+              />
+              <MetricCard
+                label="任务进度"
+                value={`${latestAnalysisProgress}%`}
+              />
+              <MetricCard
+                label="开始时间"
+                value={formatDateTime(data.latestAnalysisRun?.started_at ?? null)}
+              />
+              <MetricCard
+                label="结束时间"
+                value={formatDateTime(data.latestAnalysisRun?.completed_at ?? null)}
+              />
+              <div className="md:col-span-2 xl:col-span-5">
+                <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-stone-900">
+                      分析进度
+                    </p>
+                    <p className="text-sm text-stone-700">
+                      {formatAnalysisRunStage(latestAnalysisStage)} · {latestAnalysisProgress}%
+                    </p>
+                  </div>
+                  <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-stone-200">
+                    <div
+                      className="h-full rounded-full bg-stone-900 transition-all"
+                      style={{ width: `${latestAnalysisProgress}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+              {data.latestAnalysisRun?.error_message ? (
+                <div className="md:col-span-2 xl:col-span-5">
+                  <Alert variant="destructive">
+                    <AlertTitle>最近一次失败原因</AlertTitle>
+                    <AlertDescription>
+                      {data.latestAnalysisRun.error_message}
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
 
           {data.latestReport ? (
             <ReportVersionCard
@@ -681,6 +765,95 @@ function buildAnalysisFreshness({
     latestDataUpdateAt,
     reasonText: "",
   };
+}
+
+function formatAnalysisRunStatus(status: AnalysisRunStatus) {
+  switch (status) {
+    case "queued":
+      return "排队中";
+    case "running":
+      return "分析中";
+    case "completed":
+      return "已完成";
+    case "failed":
+      return "失败";
+    default:
+      return "未开始";
+  }
+}
+
+function formatAnalysisRunStage(stage: AnalysisRunStage) {
+  switch (stage) {
+    case "queued":
+      return "等待执行";
+    case "normalizing":
+      return "解析并入库评论";
+    case "loading_reviews":
+      return "读取项目数据";
+    case "llm_analyzing":
+      return "LLM 分析中";
+    case "writing_report":
+      return "写入报告";
+    case "completed":
+      return "已完成";
+    case "failed":
+      return "失败";
+    default:
+      return stage;
+  }
+}
+
+function resolveAnalysisStage({
+  status,
+  stage,
+}: {
+  status: AnalysisRunStatus;
+  stage: string | null;
+}): AnalysisRunStage {
+  if (
+    stage === "queued" ||
+    stage === "normalizing" ||
+    stage === "loading_reviews" ||
+    stage === "llm_analyzing" ||
+    stage === "writing_report" ||
+    stage === "completed" ||
+    stage === "failed"
+  ) {
+    return stage;
+  }
+
+  if (status === "failed") {
+    return "failed";
+  }
+
+  if (status === "completed") {
+    return "completed";
+  }
+
+  return "queued";
+}
+
+function resolveAnalysisProgress({
+  status,
+  progress,
+}: {
+  status: AnalysisRunStatus;
+  progress: number | null;
+}) {
+  if (status === "completed") {
+    return 100;
+  }
+
+  if (status === "pending") {
+    return 0;
+  }
+
+  if (typeof progress !== "number" || Number.isNaN(progress)) {
+    return status === "failed" ? 0 : 5;
+  }
+
+  const clamped = Math.max(0, Math.min(100, Math.round(progress)));
+  return clamped;
 }
 
 function buildReportContext({

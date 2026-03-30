@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 export function ProjectProductCard({
   role,
@@ -93,6 +94,9 @@ export function AnalysisInputsCard({
     file_name: string;
     row_count: number;
     created_at: string;
+    import_status: "uploaded" | "parsed" | "normalized" | "failed";
+    error_message: string | null;
+    sheet_name: string | null;
   }>;
   productNameById: Map<string, string>;
 }) {
@@ -214,11 +218,30 @@ export function AnalysisInputsCard({
                           "未知商品")
                         : "未关联商品"}
                     </p>
+                    {item.error_message ? (
+                      <p className="mt-1 text-sm text-rose-700">
+                        失败原因：{item.error_message}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge className="rounded-full" variant="outline">
                       {item.row_count} rows
                     </Badge>
+                    <Badge
+                      className={cn(
+                        "rounded-full",
+                        getImportStatusBadgeClass(item.import_status),
+                      )}
+                      variant={getImportStatusBadgeVariant(item.import_status)}
+                    >
+                      {formatImportStatus(item.import_status)}
+                    </Badge>
+                    {item.sheet_name ? (
+                      <Badge className="rounded-full" variant="outline">
+                        {item.sheet_name}
+                      </Badge>
+                    ) : null}
                     <Badge className="rounded-full" variant="secondary">
                       {formatDateTime(item.created_at)}
                     </Badge>
@@ -384,6 +407,40 @@ export function sortVocResponseItems(
 
     return left.voc_theme.localeCompare(right.voc_theme);
   });
+}
+
+function formatImportStatus(status: "uploaded" | "parsed" | "normalized" | "failed") {
+  switch (status) {
+    case "uploaded":
+      return "仅上传";
+    case "parsed":
+      return "已解析";
+    case "normalized":
+      return "已入库";
+    case "failed":
+      return "失败";
+    default:
+      return status;
+  }
+}
+
+function getImportStatusBadgeVariant(status: "uploaded" | "parsed" | "normalized" | "failed") {
+  switch (status) {
+    case "normalized":
+      return "default" as const;
+    case "parsed":
+      return "secondary" as const;
+    default:
+      return "outline" as const;
+  }
+}
+
+function getImportStatusBadgeClass(status: "uploaded" | "parsed" | "normalized" | "failed") {
+  if (status === "failed") {
+    return "border-rose-200 text-rose-700";
+  }
+
+  return "";
 }
 
 export function formatPriority(priority?: string) {

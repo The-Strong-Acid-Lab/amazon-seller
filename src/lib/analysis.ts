@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 
+import { normalizePendingUploadedReviewsForProject } from "@/lib/import-persistence";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 type DbReviewRow = {
@@ -672,26 +673,121 @@ function sortVocResponseItems(items: VocResponseItem[]) {
   });
 }
 
-export async function generateAnalysisReportForProject(projectId: string) {
+async function updateAnalysisRunProgress({
+  runId,
+  stage,
+  progress,
+}: {
+  runId: string;
+  stage:
+    | "queued"
+    | "normalizing"
+    | "loading_reviews"
+    | "llm_analyzing"
+    | "writing_report"
+    | "completed"
+    | "failed";
+  progress: number;
+}) {
   const supabase = createAdminSupabaseClient();
+  const clampedProgress = Math.max(0, Math.min(100, Math.round(progress)));
 
-  const { data: run, error: runError } = await supabase
+  const { error } = await supabase
     .from("analysis_runs")
-    .insert({
-      project_id: projectId,
-      run_type: "voc_report",
-      status: "running",
-      model_name: process.env.OPENAI_MODEL || "gpt-4.1-mini",
-      started_at: new Date().toISOString(),
+    .update({
+      stage,
+      progress: clampedProgress,
     })
-    .select("id")
-    .single();
+    .eq("id", runId);
 
-  if (runError || !run) {
-    throw new Error(runError?.message ?? "Failed to create analysis run");
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function generateAnalysisReportForProject(
+  projectId: string,
+  options?: {
+    runId?: string;
+  },
+) {
+  const supabase = createAdminSupabaseClient();
+  const modelName = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+  const existingRunId = options?.runId;
+  let run: { id: string } | null = null;
+
+  if (existingRunId) {
+    const { data: existingRun, error: existingRunError } = await supabase
+      .from("analysis_runs")
+      .select("id")
+      .eq("id", existingRunId)
+      .eq("project_id", projectId)
+      .eq("run_type", "voc_report")
+      .single();
+
+    if (existingRunError || !existingRun) {
+      throw new Error(existingRunError?.message ?? "Failed to load analysis run");
+    }
+
+    const { error: markRunningError } = await supabase
+      .from("analysis_runs")
+      .update({
+        status: "running",
+        model_name: modelName,
+        stage: "normalizing",
+        progress: 5,
+        started_at: new Date().toISOString(),
+        completed_at: null,
+        error_message: null,
+      })
+      .eq("id", existingRun.id);
+
+    if (markRunningError) {
+      throw new Error(markRunningError.message);
+    }
+
+    run = existingRun;
+  } else {
+    const { data: insertedRun, error: runError } = await supabase
+      .from("analysis_runs")
+      .insert({
+        project_id: projectId,
+        run_type: "voc_report",
+        status: "running",
+        stage: "loading_reviews",
+        progress: 20,
+        model_name: modelName,
+        started_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (runError || !insertedRun) {
+      throw new Error(runError?.message ?? "Failed to create analysis run");
+    }
+
+    run = insertedRun;
+  }
+
+  if (!run) {
+    throw new Error("Failed to initialize analysis run");
   }
 
   try {
+    await updateAnalysisRunProgress({
+      runId: run.id,
+      stage: "normalizing",
+      progress: 10,
+    });
+
+    await normalizePendingUploadedReviewsForProject(projectId);
+
+    await updateAnalysisRunProgress({
+      runId: run.id,
+      stage: "loading_reviews",
+      progress: 25,
+    });
+
     const { data: reviews, error: reviewsError } = await supabase
       .from("reviews")
       .select(
@@ -716,7 +812,9 @@ export async function generateAnalysisReportForProject(projectId: string) {
     }
 
     if (!reviews || reviews.length === 0) {
-      throw new Error("No reviews found for this project");
+      throw new Error(
+        "No reviews found for this project. Please upload review files and ensure they are normalized successfully.",
+      );
     }
 
     const roleByProductId = new Map(
@@ -738,6 +836,13 @@ export async function generateAnalysisReportForProject(projectId: string) {
     const datasetOverview = computeDatasetOverview(reviews);
     const targetOverview = computeDatasetOverview(targetReviews);
     const competitorOverview = computeDatasetOverview(competitorReviews);
+
+    await updateAnalysisRunProgress({
+      runId: run.id,
+      stage: "llm_analyzing",
+      progress: 55,
+    });
+
     const prompt = buildPrompt({
       datasetOverview,
       targetOverview,
@@ -789,6 +894,12 @@ export async function generateAnalysisReportForProject(projectId: string) {
       a_plus_brief: modelReport.a_plus_brief ?? [],
       voc_response_matrix: sortVocResponseItems(modelReport.voc_response_matrix ?? []),
     };
+
+    await updateAnalysisRunProgress({
+      runId: run.id,
+      stage: "writing_report",
+      progress: 80,
+    });
 
     const summaryJson = {
       dataset_overview: report.dataset_overview,
@@ -845,6 +956,8 @@ export async function generateAnalysisReportForProject(projectId: string) {
       .from("analysis_runs")
       .update({
         status: "completed",
+        stage: "completed",
+        progress: 100,
         completed_at: new Date().toISOString(),
       })
       .eq("id", run.id);
@@ -862,6 +975,7 @@ export async function generateAnalysisReportForProject(projectId: string) {
       .from("analysis_runs")
       .update({
         status: "failed",
+        stage: "failed",
         completed_at: new Date().toISOString(),
         error_message: error instanceof Error ? error.message : "Analysis failed",
       })

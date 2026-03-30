@@ -31,6 +31,8 @@ export type ProjectListItem = {
   latestReportAt: string | null;
 };
 
+type ProjectAnalysisState = "pending" | "analyzing" | "completed" | "failed";
+
 export function ProjectsList({
   projects,
   onCreateProject,
@@ -74,7 +76,27 @@ export function ProjectsList({
   return (
     <>
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-        {projects.map((project) => (
+        {projects.map((project) => {
+          const analysisState = getProjectAnalysisState(project);
+          const chipTone =
+            analysisState === "completed"
+              ? "border border-transparent bg-[var(--page-accent-soft)] text-[#8d5b32]"
+              : analysisState === "analyzing"
+                ? "border border-amber-200 bg-amber-50 text-amber-700"
+                : analysisState === "failed"
+                  ? "border border-rose-200 bg-rose-50 text-rose-700"
+                  : "border border-transparent bg-stone-100 text-stone-600";
+
+          const statusTone =
+            analysisState === "completed"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : analysisState === "analyzing"
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : analysisState === "failed"
+                  ? "border-rose-200 bg-rose-50 text-rose-700"
+                  : "border-[var(--page-border)] bg-white/75 text-[var(--page-muted)]";
+
+          return (
           <Card
             key={project.id}
             className="h-full rounded-xl border border-[var(--page-border)] bg-white/80 transition-colors duration-150 hover:border-[#b59a79]"
@@ -90,16 +112,16 @@ export function ProjectsList({
                   </Badge>
                   <Badge
                     variant="secondary"
-                    className="rounded-md border border-transparent bg-[var(--page-accent-soft)] font-mono text-[11px] text-[#8d5b32]"
+                    className={`rounded-md font-mono text-[11px] ${chipTone}`}
                   >
-                    {project.latestReportAt ? "已分析" : "待分析"}
+                    {getProjectAnalysisLabel(analysisState)}
                   </Badge>
                 </div>
                 <Badge
                   variant="outline"
-                  className="rounded-md border-[var(--page-border)] bg-white/75 font-mono text-[11px] text-[var(--page-muted)]"
+                  className={`rounded-md border font-mono text-[11px] ${statusTone}`}
                 >
-                  {project.status}
+                  {getProjectStatusLabel(project.status)}
                 </Badge>
               </div>
               <CardTitle className="line-clamp-2 text-lg">
@@ -118,7 +140,7 @@ export function ProjectsList({
                 />
                 <MiniStat
                   label="分析"
-                  value={project.latestReportAt ? "已生成" : "未开始"}
+                  value={getProjectAnalysisMetricLabel(analysisState)}
                 />
               </div>
               <div className="rounded-md border border-[var(--page-border)] bg-white/72 px-3 py-2 text-xs text-[var(--page-muted)]">
@@ -199,7 +221,8 @@ export function ProjectsList({
               </div>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
         {onCreateProject ? (
           <button
             className="flex h-full min-h-[22rem] flex-col items-center justify-center gap-5 rounded-xl border border-dashed border-[#b9936f] bg-[rgba(255,249,240,0.78)] text-[#8d5b32] transition-colors hover:bg-[rgba(255,244,231,0.9)]"
@@ -217,6 +240,65 @@ export function ProjectsList({
       </div>
     </>
   );
+}
+
+function getProjectAnalysisState(project: ProjectListItem): ProjectAnalysisState {
+  if (project.status === "analyzing") {
+    return "analyzing";
+  }
+
+  if (project.status === "failed") {
+    return "failed";
+  }
+
+  if (project.status === "completed" || project.latestReportAt) {
+    return "completed";
+  }
+
+  return "pending";
+}
+
+function getProjectAnalysisLabel(state: ProjectAnalysisState) {
+  switch (state) {
+    case "analyzing":
+      return "分析中";
+    case "completed":
+      return "已分析";
+    case "failed":
+      return "分析失败";
+    default:
+      return "待分析";
+  }
+}
+
+function getProjectAnalysisMetricLabel(state: ProjectAnalysisState) {
+  switch (state) {
+    case "analyzing":
+      return "进行中";
+    case "completed":
+      return "已生成";
+    case "failed":
+      return "失败";
+    default:
+      return "未开始";
+  }
+}
+
+function getProjectStatusLabel(status: string) {
+  switch (status) {
+    case "draft":
+      return "草稿";
+    case "ready":
+      return "就绪";
+    case "analyzing":
+      return "分析中";
+    case "completed":
+      return "已完成";
+    case "failed":
+      return "失败";
+    default:
+      return status;
+  }
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {

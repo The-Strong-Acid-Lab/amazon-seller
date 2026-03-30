@@ -6,16 +6,20 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "trigger:dev": "trigger dev",
+    "trigger:deploy": "trigger deploy"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
     "@supabase/supabase-js": "^2.99.3",
+    "@trigger.dev/sdk": "^4.4.3",
     "next": "16.2.1",
     "openai": "^6.32.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "react-hook-form": "^7.72.0"
+    "react-hook-form": "^7.72.0",
+    "trigger.dev": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

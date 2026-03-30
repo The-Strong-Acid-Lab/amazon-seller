@@ -102,7 +102,9 @@ export async function getProjectPageData(projectId: string) {
         .order("review_date", { ascending: false }),
       supabase
         .from("import_files")
-        .select("id, project_product_id, file_name, row_count, created_at")
+        .select(
+          "id, project_product_id, file_name, row_count, created_at, import_status, error_message, sheet_name",
+        )
         .eq("project_id", projectId)
         .order("created_at", { ascending: false }),
       supabase
@@ -144,11 +146,40 @@ export async function getProjectPageData(projectId: string) {
     throw new Error(reportError.message);
   }
 
+  const { data: activeRun, error: activeRunError } = await supabase
+    .from("analysis_runs")
+    .select("id, status, stage, progress, error_message, started_at, completed_at")
+    .eq("project_id", projectId)
+    .eq("run_type", "voc_report")
+    .in("status", ["queued", "running"])
+    .order("started_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (activeRunError) {
+    throw new Error(activeRunError.message);
+  }
+
+  const { data: latestTerminalRun, error: latestTerminalRunError } = await supabase
+    .from("analysis_runs")
+    .select("id, status, stage, progress, error_message, started_at, completed_at")
+    .eq("project_id", projectId)
+    .eq("run_type", "voc_report")
+    .in("status", ["completed", "failed"])
+    .order("completed_at", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (latestTerminalRunError) {
+    throw new Error(latestTerminalRunError.message);
+  }
+
   return {
     project,
     reviews: reviews ?? [],
     importFiles: importFiles ?? [],
     projectProducts: projectProducts ?? [],
     latestReport,
+    latestAnalysisRun: activeRun ?? latestTerminalRun ?? null,
   };
 }

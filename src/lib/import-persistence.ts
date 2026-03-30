@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { ParsedImportResult } from "@/lib/review-import";
+import { parseReviewImport } from "@/lib/review-import";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 type PersistImportOptions = {
@@ -663,6 +664,106 @@ export async function appendUploadedReviewFileToProject(
   };
 }
 
+export async function normalizePendingUploadedReviewsForProject(
+  projectId: string,
+) {
+  const supabase = createAdminSupabaseClient();
+
+  const { data: pendingImportFiles, error: pendingImportFilesError } =
+    await supabase
+      .from("import_files")
+      .select(
+        "id, project_id, project_product_id, file_name, storage_path, import_status",
+      )
+      .eq("project_id", projectId)
+      .not("storage_path", "is", null)
+      .in("import_status", ["uploaded", "parsed", "failed"])
+      .order("created_at", { ascending: true });
+
+  if (pendingImportFilesError) {
+    throw new Error(pendingImportFilesError.message);
+  }
+
+  let normalizedFiles = 0;
+  let importedReviews = 0;
+
+  for (const importFile of pendingImportFiles ?? []) {
+    if (!importFile.project_product_id) {
+      await supabase
+        .from("import_files")
+        .update({
+          import_status: "failed",
+          error_message: "Missing project_product_id on import file.",
+        })
+        .eq("id", importFile.id);
+      continue;
+    }
+
+    if (!importFile.storage_path) {
+      continue;
+    }
+
+    try {
+      const { data: storedFile, error: downloadError } = await supabase.storage
+        .from("review-imports")
+        .download(importFile.storage_path);
+
+      if (downloadError || !storedFile) {
+        throw new Error(
+          downloadError?.message ??
+            "Failed to download review file from Supabase Storage.",
+        );
+      }
+
+      const fileBuffer = Buffer.from(await storedFile.arrayBuffer());
+      const parsed = await parseReviewImport(importFile.file_name, fileBuffer);
+
+      await supabase.from("reviews").delete().eq("import_file_id", importFile.id);
+
+      const insertedCount = await insertReviewsForImportFile({
+        supabase,
+        importFileId: importFile.id,
+        projectId,
+        reviewSourceProductId: importFile.project_product_id,
+        reviews: parsed.reviews,
+      });
+
+      const { error: updateImportFileError } = await supabase
+        .from("import_files")
+        .update({
+          sheet_name: parsed.selectedSheet,
+          import_status: "normalized",
+          row_count: insertedCount,
+          error_message: null,
+        })
+        .eq("id", importFile.id);
+
+      if (updateImportFileError) {
+        throw new Error(updateImportFileError.message);
+      }
+
+      normalizedFiles += 1;
+      importedReviews += insertedCount;
+    } catch (error) {
+      await supabase
+        .from("import_files")
+        .update({
+          import_status: "failed",
+          error_message:
+            error instanceof Error ? error.message : "Failed to normalize file.",
+        })
+        .eq("id", importFile.id);
+
+      throw error;
+    }
+  }
+
+  return {
+    normalizedFiles,
+    importedReviews,
+  };
+}
+
 async function insertImportFileWithReviews({
   parsed,
   projectId,
@@ -694,66 +795,13 @@ async function insertImportFileWithReviews({
   }
 
   let importedReviews = 0;
-
-  for (const review of parsed.reviews) {
-    const { data: insertedReview, error: reviewError } = await supabase
-      .from("reviews")
-      .insert({
-        project_id: projectId,
-        project_product_id: reviewSourceProductId,
-        import_file_id: importFile.id,
-        asin: review.asin || null,
-        model: review.model || null,
-        review_title: review.reviewTitle,
-        review_body: review.reviewBody,
-        rating: review.rating,
-        review_date: review.reviewDate || null,
-        country: review.country || null,
-        is_verified_purchase: review.isVerifiedPurchase,
-        is_vine: review.isVine,
-        helpful_count: review.helpfulCount,
-        image_count: review.imageCount,
-        has_video: review.hasVideo,
-        review_url: review.reviewUrl || null,
-        reviewer_name: review.reviewerName || null,
-        reviewer_profile_url: null,
-        influencer_program_url: null,
-        raw_row_json: review.rawRow,
-      })
-      .select("id")
-      .single();
-
-    if (reviewError || !insertedReview) {
-      throw new Error(reviewError?.message ?? "Failed to insert review row");
-    }
-
-    importedReviews += 1;
-
-    const mediaRows = [
-      ...review.imageUrls.map((url, index) => ({
-        review_id: insertedReview.id,
-        media_type: "image" as const,
-        url,
-        position: index,
-      })),
-      ...review.videoUrls.map((url, index) => ({
-        review_id: insertedReview.id,
-        media_type: "video" as const,
-        url,
-        position: index,
-      })),
-    ];
-
-    if (mediaRows.length > 0) {
-      const { error: mediaError } = await supabase
-        .from("review_media")
-        .insert(mediaRows);
-
-      if (mediaError) {
-        throw new Error(mediaError.message);
-      }
-    }
-  }
+  importedReviews = await insertReviewsForImportFile({
+    supabase,
+    importFileId: importFile.id,
+    projectId,
+    reviewSourceProductId,
+    reviews: parsed.reviews,
+  });
 
   return {
     importFileId: importFile.id,
@@ -846,6 +894,84 @@ async function insertUploadedImportFile({
     storagePath,
     deduplicated: false,
   };
+}
+
+async function insertReviewsForImportFile({
+  supabase,
+  importFileId,
+  projectId,
+  reviewSourceProductId,
+  reviews,
+}: {
+  supabase: ReturnType<typeof createAdminSupabaseClient>;
+  importFileId: string;
+  projectId: string;
+  reviewSourceProductId: string;
+  reviews: ParsedImportResult["reviews"];
+}) {
+  let importedReviews = 0;
+
+  for (const review of reviews) {
+    const { data: insertedReview, error: reviewError } = await supabase
+      .from("reviews")
+      .insert({
+        project_id: projectId,
+        project_product_id: reviewSourceProductId,
+        import_file_id: importFileId,
+        asin: review.asin || null,
+        model: review.model || null,
+        review_title: review.reviewTitle,
+        review_body: review.reviewBody,
+        rating: review.rating,
+        review_date: review.reviewDate || null,
+        country: review.country || null,
+        is_verified_purchase: review.isVerifiedPurchase,
+        is_vine: review.isVine,
+        helpful_count: review.helpfulCount,
+        image_count: review.imageCount,
+        has_video: review.hasVideo,
+        review_url: review.reviewUrl || null,
+        reviewer_name: review.reviewerName || null,
+        reviewer_profile_url: null,
+        influencer_program_url: null,
+        raw_row_json: review.rawRow,
+      })
+      .select("id")
+      .single();
+
+    if (reviewError || !insertedReview) {
+      throw new Error(reviewError?.message ?? "Failed to insert review row");
+    }
+
+    importedReviews += 1;
+
+    const mediaRows = [
+      ...review.imageUrls.map((url, index) => ({
+        review_id: insertedReview.id,
+        media_type: "image" as const,
+        url,
+        position: index,
+      })),
+      ...review.videoUrls.map((url, index) => ({
+        review_id: insertedReview.id,
+        media_type: "video" as const,
+        url,
+        position: index,
+      })),
+    ];
+
+    if (mediaRows.length > 0) {
+      const { error: mediaError } = await supabase
+        .from("review_media")
+        .insert(mediaRows);
+
+      if (mediaError) {
+        throw new Error(mediaError.message);
+      }
+    }
+  }
+
+  return importedReviews;
 }
 
 function normalizePresetCompetitors(
