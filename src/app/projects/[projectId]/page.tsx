@@ -6,6 +6,7 @@ import { getProjectPageData } from "@/lib/projects";
 import { AnalyzeProjectButton } from "@/components/analyze-project-button";
 import { CompetitorListModal } from "@/components/competitor-list-modal";
 import { ExportProjectReportButton } from "@/components/export-project-report-button";
+import { ListingDeliverableCard } from "@/components/listing-deliverable-card";
 import {
   APlusBriefCard,
   AnalysisInputsCard,
@@ -17,7 +18,6 @@ import {
   ImageBriefCard,
   InsightListCard,
   LabelSummaryCard,
-  ListingDraftCard,
   MetricCard,
   OverviewCard,
   PersonaCard,
@@ -434,7 +434,12 @@ export default async function ProjectPage({
 
               <TaskListCard items={report.execution_tasks} />
 
-              <ListingDraftCard draft={report.listing_draft} />
+              <ListingDeliverableCard
+                analysisReportId={data.latestReport?.id ?? null}
+                initialDraft={report.listing_draft}
+                projectId={data.project.id}
+                snapshots={data.listingSnapshots}
+              />
 
               <div className="grid gap-6 xl:grid-cols-2">
                 <ImageBriefCard

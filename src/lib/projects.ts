@@ -86,6 +86,7 @@ export async function getProjectPageData(projectId: string) {
     { data: reviews, error: reviewsError },
     { data: importFiles, error: importFilesError },
     { data: projectProducts, error: productsError },
+    { data: listingSnapshots, error: listingSnapshotsError },
   ] =
     await Promise.all([
       supabase
@@ -114,6 +115,14 @@ export async function getProjectPageData(projectId: string) {
         )
         .eq("project_id", projectId)
         .order("created_at", { ascending: true }),
+      supabase
+        .from("listing_snapshots")
+        .select(
+          "id, project_id, analysis_report_id, title_draft, bullet_drafts, positioning_statement, source, created_at",
+        )
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false })
+        .limit(5),
     ]);
 
   if (projectError || !project) {
@@ -130,6 +139,10 @@ export async function getProjectPageData(projectId: string) {
 
   if (productsError) {
     throw new Error(productsError.message);
+  }
+
+  if (listingSnapshotsError) {
+    throw new Error(listingSnapshotsError.message);
   }
 
   const { data: latestReport, error: reportError } = await supabase
@@ -179,6 +192,14 @@ export async function getProjectPageData(projectId: string) {
     reviews: reviews ?? [],
     importFiles: importFiles ?? [],
     projectProducts: projectProducts ?? [],
+    listingSnapshots:
+      listingSnapshots?.map((snapshot) => ({
+        ...snapshot,
+        bullet_drafts: Array.isArray(snapshot.bullet_drafts)
+          ? snapshot.bullet_drafts
+              .filter((item): item is string => typeof item === "string")
+          : [],
+      })) ?? [],
     latestReport,
     latestAnalysisRun: activeRun ?? latestTerminalRun ?? null,
   };
