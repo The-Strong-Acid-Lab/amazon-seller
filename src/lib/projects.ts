@@ -87,6 +87,8 @@ export async function getProjectPageData(projectId: string) {
     { data: importFiles, error: importFilesError },
     { data: projectProducts, error: productsError },
     { data: listingSnapshots, error: listingSnapshotsError },
+    { data: imageAssets, error: imageAssetsError },
+    { data: referenceImages, error: referenceImagesError },
   ] =
     await Promise.all([
       supabase
@@ -123,6 +125,20 @@ export async function getProjectPageData(projectId: string) {
         .eq("project_id", projectId)
         .order("created_at", { ascending: false })
         .limit(5),
+      supabase
+        .from("image_assets")
+        .select(
+          "id, project_id, slot, goal, message, supporting_proof, visual_direction, prompt_zh, prompt_en, model_name, status, storage_bucket, storage_path, image_url, width, height, error_message, is_kept, version, created_at, updated_at",
+        )
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("product_reference_images")
+        .select(
+          "id, project_id, project_product_id, role, file_name, file_hash, storage_bucket, storage_path, image_url, mime_type, size_bytes, created_at",
+        )
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false }),
     ]);
 
   if (projectError || !project) {
@@ -143,6 +159,14 @@ export async function getProjectPageData(projectId: string) {
 
   if (listingSnapshotsError) {
     throw new Error(listingSnapshotsError.message);
+  }
+
+  if (imageAssetsError) {
+    throw new Error(imageAssetsError.message);
+  }
+
+  if (referenceImagesError) {
+    throw new Error(referenceImagesError.message);
   }
 
   const { data: latestReport, error: reportError } = await supabase
@@ -200,6 +224,8 @@ export async function getProjectPageData(projectId: string) {
               .filter((item): item is string => typeof item === "string")
           : [],
       })) ?? [],
+    imageAssets: imageAssets ?? [],
+    referenceImages: referenceImages ?? [],
     latestReport,
     latestAnalysisRun: activeRun ?? latestTerminalRun ?? null,
   };

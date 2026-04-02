@@ -6,6 +6,7 @@ import { getProjectPageData } from "@/lib/projects";
 import { AnalyzeProjectButton } from "@/components/analyze-project-button";
 import { CompetitorListModal } from "@/components/competitor-list-modal";
 import { ExportProjectReportButton } from "@/components/export-project-report-button";
+import { ImageBriefWorkbench } from "@/components/image-brief-workbench";
 import { ListingDeliverableCard } from "@/components/listing-deliverable-card";
 import {
   APlusBriefCard,
@@ -15,7 +16,6 @@ import {
   formatExecutionArea,
   formatPriority,
   hasListingInput,
-  ImageBriefCard,
   InsightListCard,
   LabelSummaryCard,
   MetricCard,
@@ -442,9 +442,24 @@ export default async function ProjectPage({
               />
 
               <div className="grid gap-6 xl:grid-cols-2">
-                <ImageBriefCard
+                <ImageBriefWorkbench
+                  assets={data.imageAssets}
                   brief={report.image_brief}
+                  competitorProducts={competitorProducts.map((product) => ({
+                    id: product.id,
+                    name: product.name,
+                  }))}
+                  projectId={data.project.id}
+                  referenceImages={data.referenceImages}
                   strategy={report.image_strategy}
+                  targetProduct={
+                    targetProduct
+                      ? {
+                          id: targetProduct.id,
+                          name: targetProduct.name,
+                        }
+                      : null
+                  }
                 />
                 <APlusBriefCard items={report.a_plus_brief} />
               </div>
