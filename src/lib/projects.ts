@@ -87,6 +87,11 @@ export async function getProjectPageData(projectId: string) {
     { data: importFiles, error: importFilesError },
     { data: projectProducts, error: productsError },
     { data: listingSnapshots, error: listingSnapshotsError },
+    { data: imageAssets, error: imageAssetsError },
+    { data: imageGenerationRuns, error: imageGenerationRunsError },
+    { data: imageStrategySlots, error: imageStrategySlotsError },
+    { data: referenceImages, error: referenceImagesError },
+    { data: productIdentityProfile, error: productIdentityProfileError },
   ] =
     await Promise.all([
       supabase
@@ -123,6 +128,41 @@ export async function getProjectPageData(projectId: string) {
         .eq("project_id", projectId)
         .order("created_at", { ascending: false })
         .limit(5),
+      supabase
+        .from("image_assets")
+        .select(
+          "id, project_id, slot, goal, message, supporting_proof, visual_direction, prompt_zh, prompt_en, model_name, status, storage_bucket, storage_path, image_url, width, height, error_message, is_kept, version, created_at, updated_at",
+        )
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("image_generation_runs")
+        .select(
+          "id, project_id, slot, status, stage, progress, model_name, error_message, started_at, completed_at, image_asset_id, created_at, updated_at",
+        )
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("image_strategy_slots")
+        .select(
+          "id, project_id, slot_key, order_index, section, title, purpose, conversion_goal, recommended_overlay_copy, evidence, visual_direction, compliance_notes, prompt_text, source_brief_slot, created_at, updated_at",
+        )
+        .eq("project_id", projectId)
+        .order("order_index", { ascending: true }),
+      supabase
+        .from("product_reference_images")
+        .select(
+          "id, project_id, project_product_id, role, file_name, file_hash, storage_bucket, storage_path, image_url, mime_type, size_bytes, created_at",
+        )
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("product_identity_profiles")
+        .select(
+          "id, project_id, project_product_id, status, reference_signature, source_image_count, product_type, category, primary_color, materials, signature_features, must_keep, can_change, must_not_change, identity_summary, created_at, updated_at",
+        )
+        .eq("project_id", projectId)
+        .maybeSingle(),
     ]);
 
   if (projectError || !project) {
@@ -143,6 +183,26 @@ export async function getProjectPageData(projectId: string) {
 
   if (listingSnapshotsError) {
     throw new Error(listingSnapshotsError.message);
+  }
+
+  if (imageAssetsError) {
+    throw new Error(imageAssetsError.message);
+  }
+
+  if (imageGenerationRunsError && imageGenerationRunsError.code !== "42P01") {
+    throw new Error(imageGenerationRunsError.message);
+  }
+
+  if (imageStrategySlotsError && imageStrategySlotsError.code !== "42P01") {
+    throw new Error(imageStrategySlotsError.message);
+  }
+
+  if (referenceImagesError) {
+    throw new Error(referenceImagesError.message);
+  }
+
+  if (productIdentityProfileError && productIdentityProfileError.code !== "42P01") {
+    throw new Error(productIdentityProfileError.message);
   }
 
   const { data: latestReport, error: reportError } = await supabase
@@ -200,6 +260,43 @@ export async function getProjectPageData(projectId: string) {
               .filter((item): item is string => typeof item === "string")
           : [],
       })) ?? [],
+    imageAssets: imageAssets ?? [],
+    imageGenerationRuns:
+      imageGenerationRunsError?.code === "42P01" ? [] : imageGenerationRuns ?? [],
+    imageStrategySlots:
+      imageStrategySlotsError?.code === "42P01" ? [] : imageStrategySlots ?? [],
+    referenceImages: referenceImages ?? [],
+    productIdentityProfile:
+      productIdentityProfileError?.code === "42P01" || !productIdentityProfile
+        ? null
+        : {
+            ...productIdentityProfile,
+            materials: Array.isArray(productIdentityProfile.materials)
+              ? productIdentityProfile.materials.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : [],
+            signature_features: Array.isArray(productIdentityProfile.signature_features)
+              ? productIdentityProfile.signature_features.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : [],
+            must_keep: Array.isArray(productIdentityProfile.must_keep)
+              ? productIdentityProfile.must_keep.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : [],
+            can_change: Array.isArray(productIdentityProfile.can_change)
+              ? productIdentityProfile.can_change.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : [],
+            must_not_change: Array.isArray(productIdentityProfile.must_not_change)
+              ? productIdentityProfile.must_not_change.filter(
+                  (item): item is string => typeof item === "string",
+                )
+              : [],
+          },
     latestReport,
     latestAnalysisRun: activeRun ?? latestTerminalRun ?? null,
   };

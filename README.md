@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Amazon Seller Research Console
 
-## Getting Started
+An internal console for turning Amazon reviews, listing inputs, competitor signals, and image references into usable seller decisions.
 
-First, run the development server:
+This product is not just a copy generator. The intended workflow connects:
+
+- review import and normalization
+- VOC analysis
+- target vs competitor positioning
+- listing draft generation
+- image strategy planning
+- execution-oriented outputs
+
+## Current Product Shape
+
+The main modules in the app are:
+
+- project and competitor management
+- review file import into Supabase
+- async VOC analysis with Trigger.dev
+- listing deliverable editor with snapshots
+- image strategy workbench with fixed 8 image slots
+
+## Image Module Direction
+
+The image module is being repositioned from a simple `Image Brief + direct generation` flow into a professional `8-slot strategy workbench`.
+
+The target workflow is:
+
+1. upload target and competitor reference images
+2. plan fixed listing image slots
+3. inspect and edit long-form concept prompts
+4. optionally generate image concepts
+5. keep selected versions
+
+See the detailed design note here:
+
+- [Image Strategy Workbench](./docs/image-strategy-workbench.md)
+
+## Development
+
+Run the app locally:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Run quality checks:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run lint
+npm run build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Stack
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Next.js App Router
+- TypeScript
+- Supabase
+- Trigger.dev
+- OpenAI API
