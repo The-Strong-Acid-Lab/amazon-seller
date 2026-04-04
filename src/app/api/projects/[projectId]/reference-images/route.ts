@@ -135,6 +135,14 @@ export async function POST(
       throw new Error(insertError?.message ?? "Failed to save reference image.");
     }
 
+    await supabase
+      .from("product_identity_profiles")
+      .update({
+        status: "draft",
+        reference_signature: "",
+      })
+      .eq("project_id", projectId);
+
     return NextResponse.json({
       image: insertedImage,
       deduplicated: false,

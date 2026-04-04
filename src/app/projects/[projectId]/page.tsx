@@ -441,7 +441,7 @@ export default async function ProjectPage({
                 snapshots={data.listingSnapshots}
               />
 
-              <div className="grid gap-6 xl:grid-cols-2">
+              <div className="grid gap-6">
                 <ImageBriefWorkbench
                   assets={data.imageAssets}
                   brief={report.image_brief}
@@ -449,8 +449,10 @@ export default async function ProjectPage({
                     id: product.id,
                     name: product.name,
                   }))}
+                  generationRuns={data.imageGenerationRuns}
                   projectId={data.project.id}
                   referenceImages={data.referenceImages}
+                  savedSlots={data.imageStrategySlots}
                   strategy={report.image_strategy}
                   targetProduct={
                     targetProduct

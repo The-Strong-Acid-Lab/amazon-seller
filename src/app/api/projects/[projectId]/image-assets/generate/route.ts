@@ -1,10 +1,12 @@
-import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { tasks } from "@trigger.dev/sdk";
 
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
+import type { generateImageSlotTask } from "@/trigger/generate-image-slot-task";
 
 export const runtime = "nodejs";
+
+const STALE_IMAGE_GENERATION_RUN_MS = 20 * 60 * 1000;
 
 type GenerateImagePayload = {
   slot?: string;
@@ -12,17 +14,9 @@ type GenerateImagePayload = {
   message?: string;
   supportingProof?: string;
   visualDirection?: string;
+  promptOverride?: string;
+  force?: boolean;
 };
-
-function requireEnv(name: string) {
-  const value = process.env[name];
-
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-
-  return value;
-}
 
 function sanitizeText(value: unknown) {
   if (typeof value !== "string") {
@@ -32,98 +26,18 @@ function sanitizeText(value: unknown) {
   return value.trim();
 }
 
-function toSafePathSegment(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9-_]+/g, "-")
-    .replace(/-{2,}/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40) || "slot";
-}
-
-function buildPrompts({
-  slot,
-  goal,
-  message,
-  supportingProof,
-  visualDirection,
-}: {
-  slot: string;
-  goal: string;
-  message: string;
-  supportingProof: string;
-  visualDirection: string;
-}) {
-  const promptZh = [
-    `你是亚马逊电商视觉设计助手。请为 ${slot} 生成一张可用于商品图方案评估的草图。`,
-    "风格要求：写实产品摄影风格，构图清晰，突出产品主体和卖点，不做夸张特效。",
-    "目标：",
-    goal || "突出该槽位核心卖点。",
-    "核心信息：",
-    message || "体现产品价值点。",
-    "支撑证据：",
-    supportingProof || "基于评论中的高频诉求。",
-    "视觉方向：",
-    visualDirection || "简洁、可信、易读。",
-    "限制：不要出现品牌 Logo、商标、夸大医疗承诺、误导性对比文案。",
-    "输出：一张高质量商品图草稿。",
-  ].join("\n");
-
-  const promptEn = [
-    `Create one Amazon listing image draft for slot "${slot}".`,
-    "Style: realistic product photography, clean composition, strong subject focus.",
-    "Identity lock: keep the exact same product identity as the reference image (shape, structure, and color family).",
-    "If textual instructions conflict with the reference image, prioritize the reference product identity.",
-    "No text, no letters, no logos, and no watermark.",
-    "Goal:",
-    goal || "Highlight the key value proposition for this slot.",
-    "Core message:",
-    message || "Communicate product value clearly.",
-    "Supporting proof:",
-    supportingProof || "Ground in recurring customer feedback.",
-    "Visual direction:",
-    visualDirection || "Clean, credible, and easy to scan.",
-    "Constraints: no logos, no trademark text, no exaggerated medical claims, no misleading comparisons.",
-    "Output one high-quality draft image.",
-  ].join("\n");
-
-  return {
-    promptZh,
-    promptEn,
-  };
-}
-
-type ImageGenerationResponse = {
-  data?: Array<{
-    b64_json?: string;
-    url?: string;
-  }>;
-};
-
-async function responseToImageBuffer(response: ImageGenerationResponse) {
-  const generated = response.data?.[0];
-
-  if (!generated) {
-    throw new Error("Image model returned empty result.");
+function isStaleRun(timestamp: string | null | undefined) {
+  if (!timestamp) {
+    return false;
   }
 
-  if (generated.b64_json) {
-    return Buffer.from(generated.b64_json, "base64");
+  const value = new Date(timestamp).getTime();
+
+  if (Number.isNaN(value)) {
+    return false;
   }
 
-  if (generated.url) {
-    const imageResponse = await fetch(generated.url);
-
-    if (!imageResponse.ok) {
-      throw new Error("Failed to fetch generated image URL.");
-    }
-
-    const arrayBuffer = await imageResponse.arrayBuffer();
-    return Buffer.from(arrayBuffer);
-  }
-
-  throw new Error("Image model response does not contain image data.");
+  return Date.now() - value > STALE_IMAGE_GENERATION_RUN_MS;
 }
 
 export async function POST(
@@ -145,170 +59,142 @@ export async function POST(
     const message = sanitizeText(body.message);
     const supportingProof = sanitizeText(body.supportingProof);
     const visualDirection = sanitizeText(body.visualDirection);
+    const promptOverride = sanitizeText(body.promptOverride);
+    const force = Boolean(body.force);
 
     if (!slot) {
       return NextResponse.json({ error: "Slot is required." }, { status: 400 });
     }
 
-    const [
-      { data: project, error: projectError },
-      { data: latestReport, error: reportError },
-      { data: latestTargetReferenceImage, error: targetReferenceError },
-    ] =
-      await Promise.all([
-        supabase.from("projects").select("id").eq("id", projectId).maybeSingle(),
-        supabase
-          .from("analysis_reports")
-          .select("id")
-          .eq("project_id", projectId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase
-          .from("product_reference_images")
-          .select("id, file_name")
-          .eq("project_id", projectId)
-          .eq("role", "target")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-      ]);
-
-    if (projectError || !project) {
-      return NextResponse.json(
-        { error: projectError?.message ?? "Project not found." },
-        { status: 404 },
-      );
-    }
-
-    if (reportError) {
-      throw new Error(reportError.message);
-    }
-
-    if (targetReferenceError) {
-      if (targetReferenceError.code === "42P01") {
-        return NextResponse.json(
-          {
-            error:
-              "数据库结构尚未更新，请先执行 `supabase db push`（缺少 product_reference_images）。",
-          },
-          { status: 500 },
-        );
-      }
-      throw new Error(targetReferenceError.message);
-    }
-
-    if (!latestTargetReferenceImage) {
-      return NextResponse.json(
-        { error: "请先上传至少 1 张我的商品图片，再生成草图。" },
-        { status: 400 },
-      );
-    }
-
-    const { data: latestVersionRow, error: latestVersionError } = await supabase
-      .from("image_assets")
-      .select("version")
+    const { data: activeRun, error: activeRunError } = await supabase
+      .from("image_generation_runs")
+      .select("id, status, stage, progress, created_at, started_at")
       .eq("project_id", projectId)
       .eq("slot", slot)
-      .order("version", { ascending: false })
+      .in("status", ["queued", "running"])
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (latestVersionError) {
-      if (latestVersionError.code === "42P01") {
+    if (activeRunError) {
+      if (activeRunError.code === "42P01") {
         return NextResponse.json(
           {
-            error: "数据库结构尚未更新，请先执行 `supabase db push`（缺少 image_assets）。",
+            error:
+              "数据库结构尚未更新，请先执行 `supabase db push`（缺少 image_generation_runs）。",
           },
           { status: 500 },
         );
       }
-      throw new Error(latestVersionError.message);
+
+      throw new Error(activeRunError.message);
     }
 
-    const version = (latestVersionRow?.version ?? 0) + 1;
-    const { promptZh, promptEn } = buildPrompts({
-      slot,
-      goal,
-      message,
-      supportingProof,
-      visualDirection,
-    });
-
-    const openai = new OpenAI({
-      apiKey: requireEnv("OPENAI_API_KEY"),
-    });
-    const modelName = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5";
-    const generation = (await openai.images.generate({
-      model: modelName,
-      prompt: [
-        promptEn,
-        "",
-        "Reference constraints:",
-        `The product identity should remain close to the uploaded reference image: ${latestTargetReferenceImage.file_name}.`,
-        "Do not change product category or core structure.",
-        "No text, no letters, no logo, no watermark.",
-      ].join("\n"),
-      size: "1024x1024",
-    })) as ImageGenerationResponse;
-
-    const imageBuffer = await responseToImageBuffer(generation);
-    const bucket = "listing-images";
-    const slotKey = toSafePathSegment(slot);
-    const imageHash = createHash("sha256").update(imageBuffer).digest("hex").slice(0, 16);
-    const storagePath = `projects/${projectId}/${slotKey}/v${version}-${imageHash}.png`;
-
-    const { error: uploadError } = await supabase.storage.from(bucket).upload(storagePath, imageBuffer, {
-      contentType: "image/png",
-      upsert: true,
-    });
-
-    if (uploadError) {
-      throw new Error(uploadError.message || "Failed to upload generated image.");
+    if (
+      activeRun &&
+      !force &&
+      !isStaleRun(activeRun.started_at ?? activeRun.created_at)
+    ) {
+      return NextResponse.json({
+        ok: true,
+        runId: activeRun.id,
+        runStatus: activeRun.status,
+        runStage: activeRun.stage,
+        runProgress: activeRun.progress,
+        deduplicated: true,
+      });
     }
 
-    const publicUrl = supabase.storage.from(bucket).getPublicUrl(storagePath).data.publicUrl;
+    if (activeRun) {
+      await supabase
+        .from("image_generation_runs")
+        .update({
+          status: "failed",
+          stage: "failed",
+          progress: 100,
+          completed_at: new Date().toISOString(),
+          error_message: force
+            ? "已由用户手动终止这条卡住任务，并重新发起生成。"
+            : "任务长时间未完成，系统已自动标记为失败，请重新生成。",
+        })
+        .eq("id", activeRun.id);
+    }
 
-    const { data: insertedAsset, error: insertError } = await supabase
-      .from("image_assets")
+    const { data: run, error: runError } = await supabase
+      .from("image_generation_runs")
       .insert({
         project_id: projectId,
-        analysis_report_id: latestReport?.id ?? null,
         slot,
-        goal,
-        message,
-        supporting_proof: supportingProof,
-        visual_direction: visualDirection,
-        prompt_zh: promptZh,
-        prompt_en: promptEn,
-        model_name: modelName,
-        status: "generated",
-        storage_bucket: bucket,
-        storage_path: storagePath,
-        image_url: publicUrl,
-        width: 1024,
-        height: 1024,
-        is_kept: false,
-        version,
+        status: "queued",
+        stage: "queued",
+        progress: 0,
+        model_name: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5",
+        started_at: null,
+        completed_at: null,
+        error_message: null,
       })
-      .select(
-        "id, project_id, slot, goal, message, supporting_proof, visual_direction, prompt_zh, prompt_en, model_name, status, storage_bucket, storage_path, image_url, width, height, error_message, is_kept, version, created_at, updated_at",
-      )
+      .select("id, status, stage, progress")
       .single();
 
-    if (insertError || !insertedAsset) {
-      if (insertError?.code === "42P01") {
+    if (runError || !run) {
+      if (runError?.code === "42P01") {
         return NextResponse.json(
           {
-            error: "数据库结构尚未更新，请先执行 `supabase db push`（缺少 image_assets）。",
+            error:
+              "数据库结构尚未更新，请先执行 `supabase db push`（缺少 image_generation_runs）。",
           },
           { status: 500 },
         );
       }
-      throw new Error(insertError?.message ?? "Failed to insert generated asset.");
+
+      throw new Error(runError?.message ?? "Failed to create image generation run.");
     }
 
-    return NextResponse.json({ asset: insertedAsset });
+    if (!process.env.TRIGGER_SECRET_KEY) {
+      throw new Error(
+        "Missing TRIGGER_SECRET_KEY. Please configure Trigger.dev environment variables first.",
+      );
+    }
+
+    try {
+      await tasks.trigger<typeof generateImageSlotTask>("generate-image-slot", {
+        projectId,
+        runId: run.id,
+        generation: {
+          slot,
+          goal,
+          message,
+          supportingProof,
+          visualDirection,
+          promptOverride,
+        },
+      });
+    } catch (triggerError) {
+      await supabase
+        .from("image_generation_runs")
+        .update({
+          status: "failed",
+          stage: "failed",
+          progress: 100,
+          completed_at: new Date().toISOString(),
+          error_message:
+            triggerError instanceof Error
+              ? triggerError.message
+              : "Failed to enqueue Trigger.dev task",
+        })
+        .eq("id", run.id);
+
+      throw triggerError;
+    }
+
+    return NextResponse.json({
+      ok: true,
+      runId: run.id,
+      runStatus: run.status,
+      runStage: run.stage,
+      runProgress: run.progress,
+      deduplicated: false,
+    });
   } catch (error) {
     console.error("Image generation failed", {
       error: error instanceof Error ? error.message : String(error),
@@ -316,9 +202,9 @@ export async function POST(
 
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Failed to generate image.",
+        error: error instanceof Error ? error.message : "Failed to enqueue image generation.",
       },
-      { status: 500 },
+      { status: 400 },
     );
   }
 }

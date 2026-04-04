@@ -1,89 +1,52 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ImageLightbox } from "@/components/image-lightbox";
-
-type ImageBriefItem = {
-  slot: string;
-  goal: string;
-  message: string;
-  supporting_proof: string;
-  visual_direction: string;
-};
-
-type ImageStrategy = {
-  hero_image: string;
-  feature_callouts: string[];
-  objection_handling_images: string[];
-  lifestyle_scenes: string[];
-};
-
-type ImageAsset = {
-  id: string;
-  slot: string;
-  goal: string;
-  message: string;
-  supporting_proof: string;
-  visual_direction: string;
-  prompt_zh: string;
-  prompt_en: string;
-  model_name: string;
-  status: "generated" | "failed";
-  image_url: string | null;
-  error_message: string | null;
-  is_kept: boolean;
-  version: number;
-  created_at: string;
-};
-
-type ActionResponse = {
-  error?: string;
-};
-
-type ProductReferenceImage = {
-  id: string;
-  project_product_id: string;
-  role: "target" | "competitor";
-  file_name: string;
-  image_url: string | null;
-  created_at: string;
-};
-
-type ProductOption = {
-  id: string;
-  name: string | null;
-};
-
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString("zh-CN", {
-    hour12: false,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { DeleteConfirmDialog } from "@/components/image-strategy-workbench/delete-confirm-dialog";
+import { ReferenceImageSection } from "@/components/image-strategy-workbench/reference-image-section";
+import { StrategySlotCard } from "@/components/image-strategy-workbench/strategy-slot-card";
+import type {
+  ActionResponse,
+  DeleteTarget,
+  ImageAsset,
+  ImageGenerationRun,
+  ProductOption,
+  ProductReferenceImage,
+  SlotDraftFields,
+} from "@/components/image-strategy-workbench/types";
+import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import {
+  buildEditableImagePrompt,
+  buildImageStrategySlots,
+  mergePersistedImageStrategySlots,
+  type ImageBriefInput,
+  type ImageStrategyInput,
+  type ImageStrategySlotPlan,
+  type PersistedImageStrategySlot,
+} from "@/lib/image-strategy";
 
 export function ImageBriefWorkbench({
   projectId,
   brief,
   strategy,
   assets,
+  generationRuns,
+  savedSlots,
   targetProduct,
   competitorProducts,
   referenceImages,
 }: {
   projectId: string;
-  brief: ImageBriefItem[];
-  strategy: ImageStrategy | undefined;
+  brief: ImageBriefInput[];
+  strategy: ImageStrategyInput | undefined;
   assets: ImageAsset[];
+  generationRuns: ImageGenerationRun[];
+  savedSlots: PersistedImageStrategySlot[];
   targetProduct: ProductOption | null;
   competitorProducts: ProductOption[];
   referenceImages: ProductReferenceImage[];
@@ -91,10 +54,58 @@ export function ImageBriefWorkbench({
   const router = useRouter();
   const [generatingSlot, setGeneratingSlot] = useState<string | null>(null);
   const [keepingAssetId, setKeepingAssetId] = useState<string | null>(null);
+  const [savingSlotId, setSavingSlotId] = useState<string | null>(null);
+  const [isSavingAll, setIsSavingAll] = useState(false);
   const [uploadingProductId, setUploadingProductId] = useState<string | null>(null);
+  const [uploadingFileCount, setUploadingFileCount] = useState(0);
   const [deletingReferenceId, setDeletingReferenceId] = useState<string | null>(null);
+  const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
+  const [expandedSlotId, setExpandedSlotId] = useState<string | null>("main_image");
+  const [expandedAssetId, setExpandedAssetId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraftFields>>({});
+  const [promptOverrides, setPromptOverrides] = useState<Record<string, string>>({});
+  const [runStateBySlot, setRunStateBySlot] = useState<Record<string, ImageGenerationRun>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const strategySlots = useMemo(() => {
+    const slots = buildImageStrategySlots({ brief, strategy });
+    return mergePersistedImageStrategySlots({
+      slots,
+      persistedSlots: savedSlots,
+    });
+  }, [brief, savedSlots, strategy]);
+
+  useEffect(() => {
+    setSlotDrafts((current) => {
+      const next = { ...current };
+
+      for (const slot of strategySlots) {
+        if (typeof next[slot.id] === "undefined") {
+          next[slot.id] = {
+            purpose: slot.purpose,
+            conversionGoal: slot.conversionGoal,
+            recommendedOverlayCopy: slot.recommendedOverlayCopy,
+          };
+        }
+      }
+
+      return next;
+    });
+  }, [strategySlots]);
+
+  useEffect(() => {
+    const nextRuns = generationRuns.reduce<Record<string, ImageGenerationRun>>((accumulator, run) => {
+      if (!accumulator[run.slot]) {
+        accumulator[run.slot] = run;
+      }
+
+      return accumulator;
+    }, {});
+
+    setRunStateBySlot(nextRuns);
+  }, [generationRuns]);
 
   const assetsBySlot = useMemo(() => {
     const mapping = new Map<string, ImageAsset[]>();
@@ -127,7 +138,9 @@ export function ImageBriefWorkbench({
     for (const [productId, productImages] of mapping.entries()) {
       mapping.set(
         productId,
-        productImages.sort((left, right) => right.created_at.localeCompare(left.created_at)),
+        productImages.sort((left, right) =>
+          right.created_at.localeCompare(left.created_at),
+        ),
       );
     }
 
@@ -142,43 +155,237 @@ export function ImageBriefWorkbench({
     return (referenceImagesByProduct.get(targetProduct.id) ?? []).length;
   }, [referenceImagesByProduct, targetProduct]);
 
-  async function handleReferenceUpload(projectProductId: string, file: File | null) {
-    if (!file) {
+  const competitorReferenceCount = useMemo(
+    () =>
+      competitorProducts.reduce((count, competitor) => {
+        return count + (referenceImagesByProduct.get(competitor.id) ?? []).length;
+      }, 0),
+    [competitorProducts, referenceImagesByProduct],
+  );
+
+  useEffect(() => {
+    const supabase = createBrowserSupabaseClient();
+    const channel = supabase
+      .channel(`image-generation-runs:${projectId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "image_generation_runs",
+          filter: `project_id=eq.${projectId}`,
+        },
+        (payload) => {
+          const run = payload.new as ImageGenerationRun | undefined;
+
+          if (!run?.slot) {
+            return;
+          }
+
+          setRunStateBySlot((current) => ({
+            ...current,
+            [run.slot]: run,
+          }));
+
+          if (run.status === "completed" || run.status === "failed") {
+            router.refresh();
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [projectId, router]);
+
+  function getSlotDraft(slotId: string, slot: ImageStrategySlotPlan) {
+    return (
+      slotDrafts[slotId] ?? {
+        purpose: slot.purpose,
+        conversionGoal: slot.conversionGoal,
+        recommendedOverlayCopy: slot.recommendedOverlayCopy,
+      }
+    );
+  }
+
+  function buildSuggestedPrompt(slot: ImageStrategySlotPlan) {
+    const draft = getSlotDraft(slot.id, slot);
+
+    return buildEditableImagePrompt({
+      ...slot,
+      purpose: draft.purpose,
+      conversionGoal: draft.conversionGoal,
+      recommendedOverlayCopy: draft.recommendedOverlayCopy,
+    });
+  }
+
+  function isSlotFieldsDirty(slot: ImageStrategySlotPlan) {
+    const draft = getSlotDraft(slot.id, slot);
+
+    return (
+      draft.purpose !== slot.purpose ||
+      draft.conversionGoal !== slot.conversionGoal ||
+      draft.recommendedOverlayCopy !== slot.recommendedOverlayCopy
+    );
+  }
+
+  function getPromptValue(slot: ImageStrategySlotPlan) {
+    const override = promptOverrides[slot.id];
+
+    if (typeof override === "string") {
+      return override;
+    }
+
+    if (isSlotFieldsDirty(slot)) {
+      return buildSuggestedPrompt(slot);
+    }
+
+    return slot.defaultPrompt;
+  }
+
+  function resolveSlotAssets(slotId: string, sourceBriefSlot: string | null) {
+    const exactAssets = assetsBySlot.get(slotId) ?? [];
+
+    if (exactAssets.length > 0) {
+      return exactAssets;
+    }
+
+    const legacyTokens = [
+      slotId,
+      sourceBriefSlot ?? "",
+      slotId === "main_image" ? "hero" : "",
+      slotId === "core_value" ? "image 2" : "",
+      slotId === "primary_lifestyle" ? "image 3" : "",
+      slotId === "secondary_lifestyle" ? "image 4" : "",
+      slotId === "feature_proof" ? "image 5" : "",
+      slotId === "material_detail" ? "image 6" : "",
+    ]
+      .map((token) => token.toLowerCase().trim())
+      .filter(Boolean);
+
+    return assets
+      .filter((asset) => {
+        const normalizedSlot = asset.slot.toLowerCase();
+        return legacyTokens.some((token) => normalizedSlot.includes(token));
+      })
+      .sort((left, right) => right.version - left.version);
+  }
+
+  function buildSlotPayload(slotId: string) {
+    const slot = strategySlots.find((item) => item.id === slotId);
+
+    if (!slot) {
+      return null;
+    }
+
+    const draft = getSlotDraft(slot.id, slot);
+
+    return {
+      slotKey: slot.id,
+      order: slot.order,
+      section: slot.section,
+      title: slot.title,
+      purpose: draft.purpose,
+      conversionGoal: draft.conversionGoal,
+      recommendedOverlayCopy: draft.recommendedOverlayCopy,
+      evidence: slot.evidence,
+      visualDirection: slot.visualDirection,
+      complianceNotes: slot.complianceNotes,
+      promptText: getPromptValue(slot),
+      sourceBriefSlot: slot.sourceBriefSlot,
+    };
+  }
+
+  async function saveSlots(slotIds: string[], options?: { silent?: boolean }) {
+    const payloadSlots = slotIds
+      .map((slotId) => buildSlotPayload(slotId))
+      .filter((item): item is NonNullable<ReturnType<typeof buildSlotPayload>> => Boolean(item));
+
+    if (payloadSlots.length === 0) {
+      return false;
+    }
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/image-strategy-slots`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          slots: payloadSlots,
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as ActionResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "保存图片策略失败。");
+      }
+
+      if (!options?.silent) {
+        setMessage(
+          payloadSlots.length === 1 ? "当前槽位策略已保存。" : "全部图片策略已保存。",
+        );
+        router.refresh();
+      }
+
+      return true;
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "保存图片策略失败。");
+      return false;
+    }
+  }
+
+  async function handleReferenceUpload(projectProductId: string, files: FileList | File[] | null) {
+    const nextFiles = files ? Array.from(files) : [];
+
+    if (nextFiles.length === 0) {
       return;
     }
 
     setUploadingProductId(projectProductId);
+    setUploadingFileCount(nextFiles.length);
     setError(null);
     setMessage(null);
 
     try {
-      const formData = new FormData();
-      formData.append("projectProductId", projectProductId);
-      formData.append("file", file);
+      let deduplicatedCount = 0;
 
-      const response = await fetch(`/api/projects/${projectId}/reference-images`, {
-        method: "POST",
-        body: formData,
-      });
+      for (const file of nextFiles) {
+        const formData = new FormData();
+        formData.append("projectProductId", projectProductId);
+        formData.append("file", file);
 
-      const payload = (await response.json().catch(() => ({}))) as ActionResponse & {
-        deduplicated?: boolean;
-      };
+        const response = await fetch(`/api/projects/${projectId}/reference-images`, {
+          method: "POST",
+          body: formData,
+        });
 
-      if (!response.ok) {
-        throw new Error(payload.error ?? "上传素材图片失败。");
+        const payload = (await response.json().catch(() => ({}))) as ActionResponse & {
+          deduplicated?: boolean;
+        };
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? `上传失败：${file.name}`);
+        }
+
+        if (payload.deduplicated) {
+          deduplicatedCount += 1;
+        }
       }
 
       setMessage(
-        payload.deduplicated
-          ? "检测到重复素材，已复用已有图片。"
-          : "素材图片上传成功。",
+        deduplicatedCount > 0
+          ? `已处理 ${nextFiles.length} 张图片，其中 ${deduplicatedCount} 张检测为重复素材。`
+          : `已上传 ${nextFiles.length} 张素材图片。`,
       );
       router.refresh();
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "上传素材图片失败。");
     } finally {
       setUploadingProductId(null);
+      setUploadingFileCount(0);
     }
   }
 
@@ -207,42 +414,141 @@ export function ImageBriefWorkbench({
     }
   }
 
-  async function handleGenerate(item: ImageBriefItem) {
-    if (targetReferenceCount === 0) {
-      setError("请先上传至少 1 张我的商品图片，再生成草图。");
-      return;
-    }
-
-    setGeneratingSlot(item.slot);
+  async function handleDeleteAsset(asset: ImageAsset) {
+    setDeletingAssetId(asset.id);
     setError(null);
     setMessage(null);
 
     try {
+      const response = await fetch(
+        `/api/projects/${projectId}/image-assets/${asset.id}`,
+        { method: "DELETE" },
+      );
+      const payload = (await response.json().catch(() => ({}))) as ActionResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "删除方案图失败。");
+      }
+
+      setMessage("已删除方案图。");
+      router.refresh();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "删除方案图失败。");
+    } finally {
+      setDeletingAssetId(null);
+    }
+  }
+
+  async function handleGenerate(slotId: string, options?: { force?: boolean }) {
+    const slot = strategySlots.find((item) => item.id === slotId);
+
+    if (!slot) {
+      return;
+    }
+
+    const draft = getSlotDraft(slot.id, slot);
+
+    if (targetReferenceCount === 0) {
+      setError("请先上传至少 1 张我的商品图片，再生成方案图。");
+      return;
+    }
+
+    setGeneratingSlot(slot.id);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const saved = await saveSlots([slot.id], { silent: true });
+
+      if (!saved) {
+        return;
+      }
+
       const response = await fetch(`/api/projects/${projectId}/image-assets/generate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          slot: item.slot,
-          goal: item.goal,
-          message: item.message,
-          supportingProof: item.supporting_proof,
-          visualDirection: item.visual_direction,
+          slot: slot.id,
+          goal: draft.purpose,
+          message: draft.conversionGoal,
+          supportingProof: slot.evidence,
+          visualDirection: slot.visualDirection,
+          promptOverride: getPromptValue(slot),
+          force: Boolean(options?.force),
         }),
       });
-      const payload = (await response.json().catch(() => ({}))) as ActionResponse;
+      const payload = (await response.json().catch(() => ({}))) as ActionResponse & {
+        runId?: string;
+        runStatus?: ImageGenerationRun["status"];
+        runStage?: ImageGenerationRun["stage"];
+        runProgress?: number;
+        deduplicated?: boolean;
+      };
+
+      if (payload.runId && payload.runStatus) {
+        setRunStateBySlot((current) => ({
+          ...current,
+          [slot.id]: {
+            ...(current[slot.id] ?? {
+              project_id: projectId,
+              slot: slot.id,
+              model_name: null,
+              error_message: null,
+              started_at: null,
+              completed_at: null,
+              image_asset_id: null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }),
+            id: payload.runId,
+            status: payload.runStatus,
+            stage: payload.runStage ?? "queued",
+            progress: payload.runProgress ?? 0,
+          } as ImageGenerationRun,
+        }));
+      }
 
       if (!response.ok) {
         throw new Error(payload.error ?? "生成失败。");
       }
 
-      setMessage(`${item.slot} 已生成新草图。`);
-      router.refresh();
+      setMessage(
+        payload.deduplicated
+          ? `${slot.title} 已有后台生成任务在进行中。`
+          : options?.force
+            ? `${slot.title} 已解除卡住任务并重新加入后台生成队列。`
+            : `${slot.title} 已加入后台生成队列。`,
+      );
     } catch (generationError) {
       setError(generationError instanceof Error ? generationError.message : "生成失败。");
     } finally {
       setGeneratingSlot(null);
+    }
+  }
+
+  async function handleSaveSlot(slotId: string) {
+    setSavingSlotId(slotId);
+    setError(null);
+    setMessage(null);
+
+    try {
+      await saveSlots([slotId]);
+    } finally {
+      setSavingSlotId(null);
+    }
+  }
+
+  async function handleSaveAll() {
+    setIsSavingAll(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      await saveSlots(strategySlots.map((slot) => slot.id));
+    } finally {
+      setIsSavingAll(false);
     }
   }
 
@@ -271,77 +577,126 @@ export function ImageBriefWorkbench({
     }
   }
 
+  async function handleConfirmDelete() {
+    if (!deleteTarget) {
+      return;
+    }
+
+    if (deleteTarget.kind === "reference") {
+      await handleDeleteReference(deleteTarget.item);
+    } else {
+      await handleDeleteAsset(deleteTarget.item);
+    }
+
+    setDeleteTarget(null);
+  }
+
+  function updateSlotDraft(slot: ImageStrategySlotPlan, field: keyof SlotDraftFields, value: string) {
+    setSlotDrafts((current) => ({
+      ...current,
+      [slot.id]: {
+        ...(current[slot.id] ?? {
+          purpose: slot.purpose,
+          conversionGoal: slot.conversionGoal,
+          recommendedOverlayCopy: slot.recommendedOverlayCopy,
+        }),
+        [field]: value,
+      },
+    }));
+  }
+
   return (
     <Card className="rounded-[2rem]">
       <CardHeader>
-        <CardTitle>Image Brief 与草图生成</CardTitle>
+        <CardTitle>8 图策略工作台</CardTitle>
         <CardDescription>
-          先上传商品素材图（我的商品必传），再基于 Image Brief 生成草图并保留版本。
+          先汇总自己的图片和竞品图片，再生成固定 8 个 Amazon 图片槽位的策略、可编辑
+          提示词和图片方案版本。
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-6">
         <div className="grid gap-4 rounded-2xl border border-stone-200 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-stone-900">素材输入</p>
-            <Badge className="rounded-full" variant={targetReferenceCount > 0 ? "default" : "outline"}>
-              我的商品素材 {targetReferenceCount > 0 ? "已就绪" : "未上传"}
-            </Badge>
+          <div className="grid gap-3 xl:grid-cols-3">
+            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-stone-500">
+                输入状态
+              </p>
+              <p className="mt-3 text-2xl font-semibold text-stone-950">
+                {targetReferenceCount + competitorReferenceCount}
+              </p>
+              <p className="mt-2 text-sm text-stone-600">当前已上传的参考图片总数</p>
+            </div>
+            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-stone-500">
+                我的商品素材
+              </p>
+              <p className="mt-3 text-2xl font-semibold text-stone-950">
+                {targetReferenceCount}
+              </p>
+              <p className="mt-2 text-sm text-stone-600">
+                至少 1 张后，才允许生成任何槽位方案图
+              </p>
+            </div>
+            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
+              <p className="text-xs font-medium uppercase tracking-[0.24em] text-stone-500">
+                商品约束
+              </p>
+              <p className="mt-3 text-2xl font-semibold text-stone-950">
+                自动处理
+              </p>
+              <p className="mt-2 text-sm text-stone-600">
+                系统会在后台自动识别商品身份，并用于约束后续图片生成
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-stone-900">专业工作流</p>
+              <p className="mt-1 text-sm text-stone-600">
+                先定 8 张图各自的销售任务，再看提示词，再生成图片方案。每张图生成后都会自动做一次商品一致性校验。
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge className="rounded-full" variant="outline">
+                1 主图
+              </Badge>
+              <Badge className="rounded-full" variant="outline">
+                7 副图
+              </Badge>
+              <Badge className="rounded-full" variant="outline">
+                提示词可编辑
+              </Badge>
+              <Badge className="rounded-full" variant="outline">
+                图片后台生成
+              </Badge>
+            </div>
           </div>
 
           {targetProduct ? (
-            <div className="grid gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium text-stone-900">
-                  我的商品：{targetProduct.name ?? "未命名我的商品"}
-                </p>
-                <input
-                  accept="image/*"
-                  className="block w-full max-w-xs cursor-pointer text-xs text-stone-700 file:mr-3 file:cursor-pointer file:rounded-full file:border file:border-stone-300 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-medium"
-                  disabled={uploadingProductId === targetProduct.id}
-                  onChange={(event) => {
-                    const nextFile = event.target.files?.[0] ?? null;
-                    void handleReferenceUpload(targetProduct.id, nextFile);
-                    event.currentTarget.value = "";
-                  }}
-                  type="file"
-                />
-              </div>
-              <div className="grid gap-2">
-                {(referenceImagesByProduct.get(targetProduct.id) ?? []).length > 0 ? (
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    {(referenceImagesByProduct.get(targetProduct.id) ?? []).map((image) => (
-                      <div key={image.id} className="rounded-lg border border-stone-200 bg-white p-2">
-                        {image.image_url ? (
-                          <ImageLightbox
-                            alt={image.file_name}
-                            caption={image.file_name}
-                            src={image.image_url}
-                          />
-                        ) : (
-                          <div className="flex aspect-square w-full items-center justify-center rounded-md border border-dashed border-stone-300 text-xs text-stone-500">
-                            无预览图
-                          </div>
-                        )}
-                        <p className="mt-2 truncate text-xs text-stone-600">{image.file_name}</p>
-                        <Button
-                          className="mt-2 w-full rounded-full"
-                          disabled={deletingReferenceId === image.id}
-                          onClick={() => handleDeleteReference(image)}
-                          size="sm"
-                          variant="outline"
-                        >
-                          {deletingReferenceId === image.id ? "删除中..." : "删除"}
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-rose-700">
-                    还没有上传我的商品素材图。生成草图前必须先上传至少 1 张。
-                  </p>
-                )}
-              </div>
-            </div>
+            <ReferenceImageSection
+              deletingReferenceId={deletingReferenceId}
+              description="这些图片是所有 8 张图策略的产品身份锚点。"
+              emptyMessage="还没有上传我的商品素材图。生成任何方案图之前必须先上传至少 1 张。"
+              images={referenceImagesByProduct.get(targetProduct.id) ?? []}
+              isUploading={uploadingProductId === targetProduct.id}
+              key={targetProduct.id}
+              onRequestDelete={(image) =>
+                setDeleteTarget({
+                  kind: "reference",
+                  id: image.id,
+                  title: "删除这张参考图？",
+                  description:
+                    "删除后，这张图片会从 Supabase Storage 和当前项目的参考素材里一起移除。",
+                  confirmLabel: "确认删除",
+                  item: image,
+                })
+              }
+              onUpload={(files) => handleReferenceUpload(targetProduct.id, files)}
+              title={`我的商品素材库：${targetProduct.name ?? "未命名我的商品"}`}
+              uploadingFileCount={uploadingFileCount}
+              uploadLabel="支持一次多选多张图片"
+            />
           ) : (
             <p className="text-sm text-rose-700">当前项目没有“我的商品”，无法上传必需素材。</p>
           )}
@@ -349,181 +704,130 @@ export function ImageBriefWorkbench({
           {competitorProducts.length > 0 ? (
             <div className="grid gap-3">
               <p className="text-xs font-medium text-stone-700">
-                竞品素材（可选，建议上传用于后续风格/构图对比）
+                竞品图片库（可选，但建议上传用于构图/信息层级/画面套路对比）
               </p>
               <div className="grid gap-3">
-                {competitorProducts.map((competitor) => {
-                  const competitorImages = referenceImagesByProduct.get(competitor.id) ?? [];
-
-                  return (
-                    <div
-                      key={competitor.id}
-                      className="grid gap-2 rounded-xl border border-stone-200 bg-stone-50 p-3"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-stone-900">
-                          竞品：{competitor.name ?? "未命名竞品"}
-                        </p>
-                        <input
-                          accept="image/*"
-                          className="block w-full max-w-xs cursor-pointer text-xs text-stone-700 file:mr-3 file:cursor-pointer file:rounded-full file:border file:border-stone-300 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-medium"
-                          disabled={uploadingProductId === competitor.id}
-                          onChange={(event) => {
-                            const nextFile = event.target.files?.[0] ?? null;
-                            void handleReferenceUpload(competitor.id, nextFile);
-                            event.currentTarget.value = "";
-                          }}
-                          type="file"
-                        />
-                      </div>
-                      {competitorImages.length > 0 ? (
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                          {competitorImages.map((image) => (
-                            <div key={image.id} className="rounded-lg border border-stone-200 bg-white p-2">
-                              {image.image_url ? (
-                                <ImageLightbox
-                                  alt={image.file_name}
-                                  caption={image.file_name}
-                                  src={image.image_url}
-                                />
-                              ) : (
-                                <div className="flex aspect-square w-full items-center justify-center rounded-md border border-dashed border-stone-300 text-xs text-stone-500">
-                                  无预览图
-                                </div>
-                              )}
-                              <p className="mt-2 truncate text-xs text-stone-600">{image.file_name}</p>
-                              <Button
-                                className="mt-2 w-full rounded-full"
-                                disabled={deletingReferenceId === image.id}
-                                onClick={() => handleDeleteReference(image)}
-                                size="sm"
-                                variant="outline"
-                              >
-                                {deletingReferenceId === image.id ? "删除中..." : "删除"}
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-stone-500">该竞品还未上传素材。</p>
-                      )}
-                    </div>
-                  );
-                })}
+                {competitorProducts.map((competitor) => (
+                  <ReferenceImageSection
+                    deletingReferenceId={deletingReferenceId}
+                    description="同一竞品可上传多张，用来抽构图和表达套路，不需要一一对应。"
+                    emptyMessage="该竞品还未上传参考图。"
+                    images={referenceImagesByProduct.get(competitor.id) ?? []}
+                    isUploading={uploadingProductId === competitor.id}
+                    key={competitor.id}
+                    onRequestDelete={(image) =>
+                      setDeleteTarget({
+                        kind: "reference",
+                        id: image.id,
+                        title: "删除这张参考图？",
+                        description:
+                          "删除后，这张图片会从 Supabase Storage 和当前项目的参考素材里一起移除。",
+                        confirmLabel: "确认删除",
+                        item: image,
+                      })
+                    }
+                    onUpload={(files) => handleReferenceUpload(competitor.id, files)}
+                    title={`竞品：${competitor.name ?? "未命名竞品"}`}
+                    uploadingFileCount={uploadingFileCount}
+                    uploadLabel="支持一次多选多张图片"
+                  />
+                ))}
               </div>
             </div>
           ) : null}
         </div>
 
-        {brief.length > 0 ? (
-          <div className="grid gap-4">
-            {brief.map((item) => {
-              const slotAssets = assetsBySlot.get(item.slot) ?? [];
-              const latestAsset = slotAssets[0];
-
-              return (
-                <div key={`${item.slot}-${item.goal}`} className="rounded-2xl border border-stone-200 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Badge className="rounded-full" variant="outline">
-                      {item.slot}
-                    </Badge>
-                    <Button
-                      className="rounded-full px-4"
-                      disabled={generatingSlot === item.slot || targetReferenceCount === 0}
-                      onClick={() => handleGenerate(item)}
-                      size="sm"
-                    >
-                      {generatingSlot === item.slot
-                        ? "生成中..."
-                        : latestAsset
-                          ? "重生成"
-                          : "生成草图"}
-                    </Button>
-                  </div>
-                  {targetReferenceCount === 0 ? (
-                    <p className="mt-2 text-xs text-rose-700">
-                      请先上传我的商品素材图，再生成该槽位草图。
-                    </p>
-                  ) : null}
-
-                  <div className="mt-3 grid gap-2 text-sm text-stone-700">
-                    <p>
-                      <span className="font-medium text-stone-900">目标:</span> {item.goal}
-                    </p>
-                    <p>
-                      <span className="font-medium text-stone-900">核心信息:</span> {item.message}
-                    </p>
-                    <p>
-                      <span className="font-medium text-stone-900">支撑证据:</span>{" "}
-                      {item.supporting_proof}
-                    </p>
-                    <p>
-                      <span className="font-medium text-stone-900">视觉方向:</span>{" "}
-                      {item.visual_direction}
-                    </p>
-                  </div>
-
-                  {slotAssets.length > 0 ? (
-                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      {slotAssets.map((asset) => (
-                        <div key={asset.id} className="rounded-xl border border-stone-200 bg-stone-50 p-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs text-stone-600">
-                              v{asset.version} · {formatDateTime(asset.created_at)}
-                            </p>
-                            {asset.is_kept ? (
-                              <Badge className="rounded-full" variant="default">
-                                已保留
-                              </Badge>
-                            ) : (
-                              <Badge className="rounded-full" variant="outline">
-                                草图
-                              </Badge>
-                            )}
-                          </div>
-                          {asset.image_url ? (
-                            <div className="mt-3">
-                              <ImageLightbox
-                                alt={`${asset.slot} v${asset.version}`}
-                                caption={`${asset.slot} · v${asset.version}`}
-                                src={asset.image_url}
-                                thumbnailClassName="rounded-lg bg-white"
-                              />
-                            </div>
-                          ) : (
-                            <div className="mt-3 flex aspect-square w-full items-center justify-center rounded-lg border border-dashed border-stone-300 text-xs text-stone-500">
-                              无预览图
-                            </div>
-                          )}
-                          <div className="mt-3 grid gap-2">
-                            <Button
-                              className="rounded-full px-4"
-                              disabled={asset.is_kept || keepingAssetId === asset.id}
-                              onClick={() => handleKeep(asset)}
-                              size="sm"
-                              variant="outline"
-                            >
-                              {keepingAssetId === asset.id ? "处理中..." : "保留这个版本"}
-                            </Button>
-                            <p className="text-xs text-stone-600">模型: {asset.model_name}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-4 text-sm text-stone-500">该槽位还没有生成草图。</p>
-                  )}
-                </div>
-              );
-            })}
+        <div className="grid gap-4">
+          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-stone-900">8 个固定图片槽位</p>
+                <p className="mt-1 text-sm text-stone-600">
+                  每个槽位先定义销售任务、证据、合规和提示词，再决定是否生成图片方案。未通过商品一致性校验的图片会直接标记失败，不能当成有效版本。
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge className="rounded-full" variant="default">
+                  主图
+                </Badge>
+              <Badge className="rounded-full" variant="outline">
+                副图 7 张
+              </Badge>
+              <Badge className="rounded-full" variant="outline">
+                后台自动锁定商品身份
+              </Badge>
+              <Button
+                className="rounded-full"
+                disabled={isSavingAll}
+                  onClick={() => void handleSaveAll()}
+                  size="sm"
+                  variant="outline"
+                >
+                  {isSavingAll ? "保存中..." : "保存全部策略"}
+                </Button>
+              </div>
+            </div>
           </div>
-        ) : (
-          <p className="text-sm text-stone-500">还没有 Image Brief 数据，请先完成分析。</p>
-        )}
+
+          {strategySlots.map((slot) => (
+            <StrategySlotCard
+              canGenerate={targetReferenceCount > 0}
+              deletingAssetId={deletingAssetId}
+              draft={getSlotDraft(slot.id, slot)}
+              expandedAssetId={expandedAssetId}
+              isExpanded={expandedSlotId === slot.id}
+              isGenerating={
+                generatingSlot === slot.id ||
+                runStateBySlot[slot.id]?.status === "queued" ||
+                runStateBySlot[slot.id]?.status === "running"
+              }
+              isSaving={savingSlotId === slot.id}
+              keepingAssetId={keepingAssetId}
+              key={slot.id}
+              onDeleteAsset={(asset) =>
+                setDeleteTarget({
+                  kind: "asset",
+                  id: asset.id,
+                  title: "删除这个方案图？",
+                  description:
+                    "删除后，这张生成图片会从 Supabase Storage 和当前槽位的方案图历史里一起移除。",
+                  confirmLabel: "确认删除",
+                  item: asset,
+                })
+              }
+              onDraftChange={(field, value) => updateSlotDraft(slot, field, value)}
+              onGenerate={() => handleGenerate(slot.id)}
+              onKeepAsset={handleKeep}
+              onPromptChange={(value) =>
+                setPromptOverrides((current) => ({
+                  ...current,
+                  [slot.id]: value,
+                }))
+              }
+              onResetPrompt={() =>
+                setPromptOverrides((current) => ({
+                  ...current,
+                  [slot.id]: buildSuggestedPrompt(slot),
+                }))
+              }
+              onSave={() => handleSaveSlot(slot.id)}
+              onToggleAssetPrompt={(assetId) =>
+                setExpandedAssetId((current) => (current === assetId ? null : assetId))
+              }
+              onToggleExpand={() =>
+                setExpandedSlotId((current) => (current === slot.id ? null : slot.id))
+              }
+              promptValue={getPromptValue(slot)}
+              slot={slot}
+              generationRun={runStateBySlot[slot.id] ?? null}
+              slotAssets={resolveSlotAssets(slot.id, slot.sourceBriefSlot)}
+            />
+          ))}
+        </div>
 
         <div className="grid gap-4 xl:grid-cols-2">
           <div className="rounded-2xl border border-stone-200 p-4">
-            <p className="text-sm font-semibold text-stone-900">图片策略补充</p>
+            <p className="text-sm font-semibold text-stone-900">策略补充输入</p>
             <div className="mt-3 grid gap-2 text-sm text-stone-700">
               <p>
                 <span className="font-medium text-stone-900">Hero:</span>{" "}
@@ -543,6 +847,16 @@ export function ImageBriefWorkbench({
               </p>
             </div>
           </div>
+
+          <div className="rounded-2xl border border-stone-200 p-4">
+            <p className="text-sm font-semibold text-stone-900">当前起步规则</p>
+            <div className="mt-3 grid gap-2 text-sm text-stone-700">
+              <p>1. 所有图片策略都围绕固定 8 槽位，而不是零散 Image 2 / Image 3。</p>
+              <p>2. 提示词先可见、可改，再调用生成模型。</p>
+              <p>3. 主图和副图使用不同的合规约束。</p>
+              <p>4. 后续会再把文案叠加、尺寸线和 icon 渲染从生图流程里拆开。</p>
+            </div>
+          </div>
         </div>
 
         {message ? (
@@ -558,6 +872,14 @@ export function ImageBriefWorkbench({
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
+
+        <DeleteConfirmDialog
+          deletingAssetId={deletingAssetId}
+          deletingReferenceId={deletingReferenceId}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={handleConfirmDelete}
+          target={deleteTarget}
+        />
       </CardContent>
     </Card>
   );

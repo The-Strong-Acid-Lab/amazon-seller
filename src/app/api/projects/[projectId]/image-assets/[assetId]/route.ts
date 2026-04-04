@@ -4,31 +4,31 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 export async function DELETE(
   _request: Request,
-  context: { params: Promise<{ projectId: string; imageId: string }> },
+  context: { params: Promise<{ projectId: string; assetId: string }> },
 ) {
   const supabase = createAdminSupabaseClient();
 
   try {
-    const { projectId, imageId } = await context.params;
+    const { projectId, assetId } = await context.params;
 
-    const { data: imageRecord, error: imageError } = await supabase
-      .from("product_reference_images")
+    const { data: assetRecord, error: assetError } = await supabase
+      .from("image_assets")
       .select("id, project_id, storage_bucket, storage_path")
-      .eq("id", imageId)
+      .eq("id", assetId)
       .eq("project_id", projectId)
       .single();
 
-    if (imageError || !imageRecord) {
+    if (assetError || !assetRecord) {
       return NextResponse.json(
-        { error: imageError?.message ?? "Reference image not found." },
+        { error: assetError?.message ?? "Image asset not found." },
         { status: 404 },
       );
     }
 
-    if (imageRecord.storage_bucket && imageRecord.storage_path) {
+    if (assetRecord.storage_bucket && assetRecord.storage_path) {
       const { error: storageRemoveError } = await supabase.storage
-        .from(imageRecord.storage_bucket)
-        .remove([imageRecord.storage_path]);
+        .from(assetRecord.storage_bucket)
+        .remove([assetRecord.storage_path]);
 
       if (storageRemoveError) {
         throw new Error(storageRemoveError.message);
@@ -36,28 +36,20 @@ export async function DELETE(
     }
 
     const { error: deleteError } = await supabase
-      .from("product_reference_images")
+      .from("image_assets")
       .delete()
-      .eq("id", imageId)
+      .eq("id", assetId)
       .eq("project_id", projectId);
 
     if (deleteError) {
       throw new Error(deleteError.message);
     }
 
-    await supabase
-      .from("product_identity_profiles")
-      .update({
-        status: "draft",
-        reference_signature: "",
-      })
-      .eq("project_id", projectId);
-
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Failed to delete reference image.",
+        error: error instanceof Error ? error.message : "Failed to delete image asset.",
       },
       { status: 500 },
     );
