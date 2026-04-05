@@ -8,6 +8,7 @@ export async function getProjectsListData() {
     { data: projectProducts, error: productsError },
     { data: reviews, error: reviewsError },
     { data: reports, error: reportsError },
+    { data: imageAssets, error: imageAssetsError },
   ] = await Promise.all([
     supabase
       .from("projects")
@@ -24,6 +25,9 @@ export async function getProjectsListData() {
       .from("analysis_reports")
       .select("id, project_id, created_at")
       .order("created_at", { ascending: false }),
+    supabase
+      .from("image_assets")
+      .select("id, project_id"),
   ]);
 
   if (projectsError) {
@@ -42,9 +46,16 @@ export async function getProjectsListData() {
     throw new Error(reportsError.message);
   }
 
+  if (imageAssetsError && imageAssetsError.code !== "42P01") {
+    throw new Error(imageAssetsError.message);
+  }
+
   const reviewCountByProject = new Map<string, number>();
   const competitorCountByProject = new Map<string, number>();
   const latestReportByProject = new Map<string, string>();
+  const reportCountByProject = new Map<string, number>();
+  const imageCountByProject = new Map<string, number>();
+  const listingReadyByProject = new Map<string, boolean>();
 
   for (const review of reviews ?? []) {
     reviewCountByProject.set(
@@ -54,6 +65,18 @@ export async function getProjectsListData() {
   }
 
   for (const product of projectProducts ?? []) {
+    if (product.role === "target") {
+      const hasListingData = Boolean(
+        product.current_title?.trim() ||
+          product.current_bullets?.trim() ||
+          product.current_description?.trim(),
+      );
+
+      if (hasListingData) {
+        listingReadyByProject.set(product.project_id, true);
+      }
+    }
+
     if (product.role !== "competitor") {
       continue;
     }
@@ -65,9 +88,21 @@ export async function getProjectsListData() {
   }
 
   for (const report of reports ?? []) {
+    reportCountByProject.set(
+      report.project_id,
+      (reportCountByProject.get(report.project_id) ?? 0) + 1,
+    );
+
     if (!latestReportByProject.has(report.project_id)) {
       latestReportByProject.set(report.project_id, report.created_at);
     }
+  }
+
+  for (const asset of imageAssets ?? []) {
+    imageCountByProject.set(
+      asset.project_id,
+      (imageCountByProject.get(asset.project_id) ?? 0) + 1,
+    );
   }
 
   return (projects ?? []).map((project) => ({
@@ -75,6 +110,12 @@ export async function getProjectsListData() {
     reviewCount: reviewCountByProject.get(project.id) ?? 0,
     competitorCount: competitorCountByProject.get(project.id) ?? 0,
     latestReportAt: latestReportByProject.get(project.id) ?? null,
+    reportCount: reportCountByProject.get(project.id) ?? 0,
+    hasListingDraft:
+      listingReadyByProject.get(project.id) ?? Boolean(latestReportByProject.get(project.id)),
+    hasImageAssets: (imageCountByProject.get(project.id) ?? 0) > 0,
+    imageAssetCount: imageCountByProject.get(project.id) ?? 0,
+    hasAPlusBrief: Boolean(latestReportByProject.get(project.id)),
   }));
 }
 

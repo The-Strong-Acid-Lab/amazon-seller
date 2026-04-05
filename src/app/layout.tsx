@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Amazon Seller Research Console",
-  description: "Import and normalize seller review exports before VOC analysis.",
+  title: "Amazon Listing Boost",
+  description: "Amazon seller strategy workspace for reviews, listing optimization, and image planning.",
 };
 
 export default function RootLayout({

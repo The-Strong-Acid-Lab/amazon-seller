@@ -172,9 +172,9 @@ export default async function ProjectPage({
                 </Badge>
                 <Link
                   className="text-sm text-[var(--page-muted)] hover:text-stone-900"
-                  href="/"
+                  href="/console"
                 >
-                  返回导入页
+                  返回 Console
                 </Link>
               </div>
               <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950 sm:text-4xl">
