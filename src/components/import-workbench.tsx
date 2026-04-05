@@ -460,20 +460,8 @@ export function ImportWorkbench() {
       <Card className="overflow-hidden rounded-xl border border-[var(--page-border)] bg-[linear-gradient(180deg,rgba(255,252,246,0.96),rgba(255,255,255,0.82))] shadow-[0_20px_70px_rgba(54,40,24,0.08)] lg:col-span-2">
         <CardHeader className="flex-row items-start justify-between gap-4 space-y-0">
           <div>
-            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--page-muted)]">
-              Import Workbench
-            </p>
             <CardTitle className="mt-3">上传信息</CardTitle>
-            <CardDescription className="mt-3 max-w-2xl leading-7 text-[var(--page-muted)]">
-              把我的商品与竞品的评论证据、来源关系和项目上下文归位。这里先把输入整理干净，后面分析才会可信。
-            </CardDescription>
           </div>
-          <Badge
-            variant="outline"
-            className="rounded-md border-[var(--page-border)] bg-white/75 px-2.5 py-1 font-mono text-[11px] text-[var(--page-muted)]"
-          >
-            V1 / Preview
-          </Badge>
         </CardHeader>
 
         <CardContent>
@@ -481,12 +469,9 @@ export function ImportWorkbench() {
             className="grid gap-5"
             onSubmit={handleFormSubmit(handlePreview)}
           >
-            <SectionCard
-              description="这是这次商品研究任务的名字。后面你会在项目列表和详情页里用它区分不同商品。"
-              title="项目名称"
-            >
+            <SectionCard title="项目名称">
               <Input
-                placeholder="例如: meditation-chair-us-2025-11"
+                placeholder="例如: meditation-chair"
                 {...register("projectName", {
                   required: "请填写项目名称。",
                 })}

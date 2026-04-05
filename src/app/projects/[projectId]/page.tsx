@@ -18,19 +18,17 @@ import {
   hasListingInput,
   InsightListCard,
   LabelSummaryCard,
-  MetricCard,
   OverviewCard,
   PersonaCard,
   ProjectProductCard,
-  ReportVersionCard,
   sortVocResponseItems,
   StringListCard,
-  TaskListCard,
 } from "@/components/project-page/sections";
 import { ProductListingEditorModal } from "@/components/product-listing-editor-modal";
 import { ProjectSourceImport } from "@/components/project-source-import";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 type AnalysisRunStatus = "queued" | "running" | "completed" | "failed" | "pending";
@@ -78,7 +76,6 @@ function asReport(latestReport: {
     differentiators: summary.differentiators ?? [],
     comparison_opportunities: summary.comparison_opportunities ?? [],
     comparison_risks: summary.comparison_risks ?? [],
-    execution_tasks: strategy.execution_tasks ?? [],
     listing_draft: strategy.listing_draft,
     image_brief: strategy.image_brief ?? [],
     a_plus_brief: strategy.a_plus_brief ?? [],
@@ -157,24 +154,33 @@ export default async function ProjectPage({
       projectProducts: data.projectProducts,
       reportTargetReviewCount: report?.target_overview?.review_count ?? 0,
     });
+    const pageSections = [
+      { id: "overview", label: "项目概览" },
+      { id: "products", label: "商品与竞品" },
+      { id: "imports", label: "追加评论来源" },
+      { id: "inputs", label: "分析输入" },
+      ...(report
+        ? [
+            { id: "listing", label: "Listing" },
+            { id: "images", label: "图片策略" },
+            { id: "aplus", label: "A+ Brief" },
+            { id: "evidence-reviews", label: "评论与主题" },
+            { id: "evidence-needs", label: "用户与需求" },
+            { id: "evidence-strategy", label: "策略依据" },
+          ]
+        : []),
+    ];
 
     return (
-      <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-10">
+      <main className="min-h-screen scroll-smooth px-4 py-8 sm:px-6 lg:px-10">
         <div className="mx-auto grid max-w-7xl gap-6">
           <div className="flex flex-wrap items-start justify-between gap-6 rounded-xl border border-[var(--page-border)] bg-white/80 px-6 py-6 shadow-[0_20px_70px_rgba(54,40,24,0.08)] sm:px-8">
             <div>
               <div className="flex items-center gap-3">
-                <Badge
-                  variant="outline"
-                  className="rounded-md border-[var(--page-border)] bg-white/75 px-2.5 py-1 font-mono text-[11px] text-[var(--page-muted)]"
-                >
-                  PROJECT
-                </Badge>
-                <Link
-                  className="text-sm text-[var(--page-muted)] hover:text-stone-900"
-                  href="/console"
-                >
-                  返回 Console
+                <Link href="/console">
+                  <Button className="rounded-full" size="sm" variant="outline">
+                    返回 Console
+                  </Button>
                 </Link>
               </div>
               <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950 sm:text-4xl">
@@ -199,278 +205,269 @@ export default async function ProjectPage({
             </div>
           </div>
 
-          {freshness.status === "missing" ? (
-            <Alert variant="warning">
-              <AlertTitle>还没有分析结果</AlertTitle>
-              <AlertDescription>
-                当前项目已经有数据了，但还没有生成过报告。先点右上角的
-                `开始分析`。
-              </AlertDescription>
-            </Alert>
-          ) : null}
-
-          {freshness.status === "stale" ? (
-            <Alert variant="warning">
-              <AlertTitle>数据已更新，建议重新分析</AlertTitle>
-              <AlertDescription>
-                <p>
-                  最近一次分析时间：{formatDateTime(freshness.latestReportAt)}
+          <div className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)]">
+            <aside className="hidden xl:block">
+              <div className="sticky top-8 rounded-3xl border border-stone-200 bg-white/85 p-4 shadow-[0_18px_50px_rgba(54,40,24,0.06)] backdrop-blur">
+                <p className="px-2 text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+                  页面导航
                 </p>
-                <p>
-                  最近一次数据更新时间：
-                  {formatDateTime(freshness.latestDataUpdateAt)}
-                </p>
-                <p>{freshness.reasonText}</p>
-              </AlertDescription>
-            </Alert>
-          ) : null}
-
-          <Card className="rounded-[2rem]">
-            <CardHeader>
-              <CardTitle>分析任务状态</CardTitle>
-              <CardDescription>
-                这里显示最近一次分析任务的状态和时间。失败时可以直接点右上角“重新分析”。
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-              <MetricCard
-                label="当前状态"
-                value={formatAnalysisRunStatus(latestAnalysisStatus)}
-              />
-              <MetricCard
-                label="当前阶段"
-                value={formatAnalysisRunStage(latestAnalysisStage)}
-              />
-              <MetricCard
-                label="任务进度"
-                value={`${latestAnalysisProgress}%`}
-              />
-              <MetricCard
-                label="开始时间"
-                value={formatDateTime(data.latestAnalysisRun?.started_at ?? null)}
-              />
-              <MetricCard
-                label="结束时间"
-                value={formatDateTime(data.latestAnalysisRun?.completed_at ?? null)}
-              />
-              <div className="md:col-span-2 xl:col-span-5">
-                <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-stone-900">
-                      分析进度
-                    </p>
-                    <p className="text-sm text-stone-700">
-                      {formatAnalysisRunStage(latestAnalysisStage)} · {latestAnalysisProgress}%
-                    </p>
-                  </div>
-                  <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-stone-200">
-                    <div
-                      className="h-full rounded-full bg-stone-900 transition-all"
-                      style={{ width: `${latestAnalysisProgress}%` }}
-                    />
-                  </div>
-                </div>
+                <nav className="mt-4 grid gap-1">
+                  {pageSections.map((section) => (
+                    <a
+                      key={section.id}
+                      className="rounded-2xl px-3 py-2 text-sm text-stone-700 transition hover:bg-stone-100 hover:text-stone-950"
+                      href={`#${section.id}`}
+                    >
+                      {section.label}
+                    </a>
+                  ))}
+                </nav>
               </div>
-              {data.latestAnalysisRun?.error_message ? (
-                <div className="md:col-span-2 xl:col-span-5">
-                  <Alert variant="destructive">
-                    <AlertTitle>最近一次失败原因</AlertTitle>
-                    <AlertDescription>
-                      {data.latestAnalysisRun.error_message}
-                    </AlertDescription>
-                  </Alert>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
+            </aside>
 
-          {data.latestReport ? (
-            <ReportVersionCard
-              context={reportContext}
-              latestReportAt={data.latestReport.created_at}
-            />
-          ) : null}
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard label="项目状态" value={data.project.status} />
-            <MetricCard label="评论数量" value={String(data.reviews.length)} />
-            <MetricCard
-              label="目标市场"
-              value={targetProduct?.market ?? data.project.target_market ?? "-"}
-            />
-            <MetricCard
-              label="竞品数量"
-              value={String(competitorProducts.length)}
-            />
-          </div>
-
-          <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-            <Card className="rounded-[2rem]">
-              <CardHeader className="flex-row items-start justify-between gap-4 space-y-0">
-                <div>
-                  <CardTitle>我的商品</CardTitle>
-                  <CardDescription>
-                    这个项目最终是为了给这个商品做页面与转化决策。
-                  </CardDescription>
-                </div>
-                {targetProduct ? (
-                  <ProductListingEditorModal
-                    product={targetProduct}
-                    projectId={data.project.id}
-                    triggerLabel="编辑我的商品"
-                  />
-                ) : null}
-              </CardHeader>
-              <CardContent className="grid gap-3">
-                <ProjectProductCard
-                  asin={targetProduct?.asin ?? null}
-                  importCount={
-                    targetProduct
-                      ? (importCountByProduct.get(targetProduct.id) ?? 0)
-                      : 0
-                  }
-                  isLaunched={targetProduct?.is_launched ?? false}
-                  market={targetProduct?.market ?? null}
-                  name={
-                    targetProduct?.name ??
-                    data.project.product_name ??
-                    "未命名我的商品"
-                  }
-                  productUrl={targetProduct?.product_url ?? null}
-                  reviewCount={
-                    targetProduct
-                      ? (reviewCountByProduct.get(targetProduct.id) ?? 0)
-                      : 0
-                  }
-                  role="target"
-                />
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-[2rem]">
-              <CardHeader>
-                <CardTitle>竞品来源</CardTitle>
-                <CardDescription>
-                  先看竞品列表，再点开某个竞品看它自己的评论和 listing。
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3">
-                <CompetitorListModal
-                  competitors={competitorProducts.map((product) => ({
-                    ...product,
-                    role: "competitor" as const,
-                  }))}
-                  importCountByProduct={Object.fromEntries(
-                    importCountByProduct.entries(),
-                  )}
-                  projectId={data.project.id}
-                  reviews={data.reviews.filter((review) =>
-                    competitorProducts.some(
-                      (product) => product.id === review.project_product_id,
-                    ),
-                  )}
-                />
-              </CardContent>
-            </Card>
-          </div>
-
-          {targetProduct ? (
-            <ProjectSourceImport
-              projectId={data.project.id}
-              targetMarket={
-                targetProduct.market ?? data.project.target_market ?? "US"
-              }
-              targetProductId={targetProduct.id}
-            />
-          ) : null}
-
-          <AnalysisInputsCard
-            competitorProducts={competitorProducts}
-            importCountByProduct={importCountByProduct}
-            importFiles={data.importFiles}
-            productNameById={productNameById}
-            reviewCountByProduct={reviewCountByProduct}
-            targetProduct={targetProduct}
-          />
-
-          {report ? (
             <div className="grid gap-6">
-              <Card className="rounded-[2rem]">
-                <CardHeader>
-                  <CardTitle>分析总览</CardTitle>
-                  <CardDescription>
-                    这部分按 target 和 competitor
-                    分开看，不再把所有评论混成一个摘要。
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                  <MetricCard
-                    label="评论数"
-                    value={String(
-                      report.dataset_overview?.review_count ??
-                        data.reviews.length,
-                    )}
-                  />
-                  <MetricCard
-                    label="ASIN 数"
-                    value={String(report.dataset_overview?.asin_count ?? "-")}
-                  />
-                  <MetricCard
-                    label="国家数"
-                    value={String(
-                      report.dataset_overview?.country_count ?? "-",
-                    )}
-                  />
-                  <MetricCard
-                    label="起始日期"
-                    value={report.dataset_overview?.date_from ?? "-"}
-                  />
-                  <MetricCard
-                    label="结束日期"
-                    value={report.dataset_overview?.date_to ?? "-"}
-                  />
-                </CardContent>
-              </Card>
+              {freshness.status === "missing" ? (
+                <Alert variant="warning">
+                  <AlertTitle>还没有分析结果</AlertTitle>
+                  <AlertDescription>
+                    当前项目已经有数据了，但还没有生成过报告。先点右上角的
+                    `开始分析`。
+                  </AlertDescription>
+                </Alert>
+              ) : null}
 
-              <TaskListCard items={report.execution_tasks} />
+              {freshness.status === "stale" ? (
+                <Alert variant="warning">
+                  <AlertTitle>数据已更新，建议重新分析</AlertTitle>
+                  <AlertDescription>
+                    <p>
+                      最近一次分析时间：{formatDateTime(freshness.latestReportAt)}
+                    </p>
+                    <p>
+                      最近一次数据更新时间：
+                      {formatDateTime(freshness.latestDataUpdateAt)}
+                    </p>
+                    <p>{freshness.reasonText}</p>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
 
-              <ListingDeliverableCard
-                analysisReportId={data.latestReport?.id ?? null}
-                initialDraft={report.listing_draft}
-                projectId={data.project.id}
-                snapshots={data.listingSnapshots}
-              />
+              <section className="scroll-mt-24" id="overview">
+                <Card className="rounded-[2rem]">
+                  <CardHeader>
+                    <CardTitle>项目概览</CardTitle>
+                    <CardDescription>
+                      只保留当前真正有用的项：分析状态、最近报告、输入变化和当前基础数据。
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid gap-4">
+                    <div className="grid gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-5 text-sm leading-7 text-stone-700">
+                      <p>
+                        <span className="font-semibold text-stone-950">
+                          当前分析：
+                        </span>
+                        {latestAnalysisStatus === "running" ||
+                        latestAnalysisStatus === "queued"
+                          ? `${formatAnalysisRunStage(latestAnalysisStage)} · ${latestAnalysisProgress}%`
+                          : formatAnalysisRunStatus(latestAnalysisStatus)}
+                      </p>
+                      <p>
+                        <span className="font-semibold text-stone-950">
+                          最近报告：
+                        </span>
+                        {data.latestReport?.created_at
+                          ? `${formatDateTime(data.latestReport.created_at)}`
+                          : "还没有生成报告"}
+                      </p>
+                      <p>
+                        <span className="font-semibold text-stone-950">
+                          当前数据：
+                        </span>
+                        评论 {data.reviews.length} 条 · 竞品{" "}
+                        {competitorProducts.length} 个 · 市场{" "}
+                        {targetProduct?.market ?? data.project.target_market ?? "-"}
+                      </p>
+                      <p>
+                        <span className="font-semibold text-stone-950">
+                          本次纳入：
+                        </span>
+                        评论文件 {reportContext.reportInputFileCount} 份 · 竞品{" "}
+                        {reportContext.reportCompetitorCount} 个 · Listing{" "}
+                        {reportContext.reportListingInputCount} 项
+                      </p>
+                      <p>
+                        <span className="font-semibold text-stone-950">
+                          报告之后：
+                        </span>
+                        {reportContext.addedImportsAfterReport.length === 0 &&
+                        reportContext.updatedListingsAfterReport.length === 0
+                          ? "没有新的评论导入或 listing 修改"
+                          : [
+                              reportContext.addedImportsAfterReport.length > 0
+                                ? `新增评论导入 ${reportContext.addedImportsAfterReport.length} 份`
+                                : null,
+                              reportContext.updatedListingsAfterReport.length > 0
+                                ? `新增 listing 修改 ${reportContext.updatedListingsAfterReport.length} 项`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                      </p>
+                    </div>
+                    {data.latestAnalysisRun?.error_message ? (
+                      <div>
+                        <Alert variant="destructive">
+                          <AlertTitle>最近一次失败原因</AlertTitle>
+                          <AlertDescription>
+                            {data.latestAnalysisRun.error_message}
+                          </AlertDescription>
+                        </Alert>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              </section>
 
-              <div className="grid gap-6">
-                <ImageBriefWorkbench
-                  assets={data.imageAssets}
-                  brief={report.image_brief}
-                  competitorProducts={competitorProducts.map((product) => ({
-                    id: product.id,
-                    name: product.name,
-                  }))}
-                  generationRuns={data.imageGenerationRuns}
-                  projectId={data.project.id}
-                  referenceImages={data.referenceImages}
-                  savedSlots={data.imageStrategySlots}
-                  strategy={report.image_strategy}
-                  targetProduct={
-                    targetProduct
-                      ? {
-                          id: targetProduct.id,
-                          name: targetProduct.name,
+              <section className="scroll-mt-24" id="products">
+                <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
+                  <Card className="rounded-[2rem]">
+                    <CardHeader className="flex-row items-start justify-between gap-4 space-y-0">
+                      <div className="space-y-1.5">
+                        <CardTitle>我的商品</CardTitle>
+                        <CardDescription>
+                          这个项目最终是为了给这个商品做页面与转化决策。
+                        </CardDescription>
+                      </div>
+                      {targetProduct ? (
+                        <ProductListingEditorModal
+                          product={targetProduct}
+                          projectId={data.project.id}
+                          triggerLabel="编辑我的商品"
+                        />
+                      ) : null}
+                    </CardHeader>
+                    <CardContent className="grid gap-3">
+                      <ProjectProductCard
+                        asin={targetProduct?.asin ?? null}
+                        importCount={
+                          targetProduct
+                            ? (importCountByProduct.get(targetProduct.id) ?? 0)
+                            : 0
                         }
-                      : null
-                  }
-                />
-                <APlusBriefCard items={report.a_plus_brief} />
-              </div>
+                        isLaunched={targetProduct?.is_launched ?? false}
+                        market={targetProduct?.market ?? null}
+                        name={
+                          targetProduct?.name ??
+                          data.project.product_name ??
+                          "未命名我的商品"
+                        }
+                        productUrl={targetProduct?.product_url ?? null}
+                        reviewCount={
+                          targetProduct
+                            ? (reviewCountByProduct.get(targetProduct.id) ?? 0)
+                            : 0
+                        }
+                        role="target"
+                      />
+                    </CardContent>
+                  </Card>
 
-              <CollapsibleReportSection
-                defaultOpen={false}
-                description="这里放评论统计和主题拆解，用来理解结论从哪里来。日常使用先看上面的执行输出，不够时再展开。"
-                title="分析依据：评论与主题"
-              >
+                  <Card className="rounded-[2rem]">
+                    <CardHeader>
+                      <CardTitle>竞品来源</CardTitle>
+                      <CardDescription>
+                        先看竞品列表，再点开某个竞品看它自己的评论和 listing。
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid gap-3">
+                      <CompetitorListModal
+                        competitors={competitorProducts.map((product) => ({
+                          ...product,
+                          role: "competitor" as const,
+                        }))}
+                        importCountByProduct={Object.fromEntries(
+                          importCountByProduct.entries(),
+                        )}
+                        projectId={data.project.id}
+                        reviews={data.reviews.filter((review) =>
+                          competitorProducts.some(
+                            (product) => product.id === review.project_product_id,
+                          ),
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+              </section>
+
+              {targetProduct ? (
+                <section className="scroll-mt-24" id="imports">
+                  <ProjectSourceImport
+                    projectId={data.project.id}
+                    targetMarket={
+                      targetProduct.market ?? data.project.target_market ?? "US"
+                    }
+                    targetProductId={targetProduct.id}
+                  />
+                </section>
+              ) : null}
+
+              <section className="scroll-mt-24" id="inputs">
+                <AnalysisInputsCard
+                  competitorProducts={competitorProducts}
+                  importCountByProduct={importCountByProduct}
+                  importFiles={data.importFiles}
+                  productNameById={productNameById}
+                  reviewCountByProduct={reviewCountByProduct}
+                  targetProduct={targetProduct}
+                />
+              </section>
+
+              {report ? (
+                <div className="grid gap-6">
+                  <section className="scroll-mt-24" id="listing">
+                    <ListingDeliverableCard
+                      analysisReportId={data.latestReport?.id ?? null}
+                      initialDraft={report.listing_draft}
+                      projectId={data.project.id}
+                      snapshots={data.listingSnapshots}
+                    />
+                  </section>
+
+                  <section className="scroll-mt-24" id="images">
+                    <ImageBriefWorkbench
+                      assets={data.imageAssets}
+                      brief={report.image_brief}
+                      competitorProducts={competitorProducts.map((product) => ({
+                        id: product.id,
+                        name: product.name,
+                      }))}
+                      generationRuns={data.imageGenerationRuns}
+                      projectId={data.project.id}
+                      referenceImages={data.referenceImages}
+                      savedSlots={data.imageStrategySlots}
+                      strategy={report.image_strategy}
+                      targetProduct={
+                        targetProduct
+                          ? {
+                              id: targetProduct.id,
+                              name: targetProduct.name,
+                            }
+                          : null
+                      }
+                    />
+                  </section>
+
+                  <section className="scroll-mt-24" id="aplus">
+                    <APlusBriefCard items={report.a_plus_brief} />
+                  </section>
+
+                  <section className="scroll-mt-24" id="evidence-reviews">
+                    <CollapsibleReportSection
+                      defaultOpen={false}
+                      description="这里放评论统计和主题拆解，用来理解结论从哪里来。日常使用先看上面的执行输出，不够时再展开。"
+                      title="分析依据：评论与主题"
+                    >
                 <div className="grid gap-6 xl:grid-cols-2">
                   <OverviewCard
                     title="我的商品评论概览"
@@ -517,13 +514,15 @@ export default async function ProjectPage({
                     title="竞品负向主题"
                   />
                 </div>
-              </CollapsibleReportSection>
+                    </CollapsibleReportSection>
+                  </section>
 
-              <CollapsibleReportSection
-                defaultOpen={false}
-                description="这里是用户、场景、驱动因素和卖点分层。做定位、图片和文案时用它校准方向。"
-                title="分析依据：用户与需求"
-              >
+                  <section className="scroll-mt-24" id="evidence-needs">
+                    <CollapsibleReportSection
+                      defaultOpen={false}
+                      description="这里是用户、场景、驱动因素和卖点分层。做定位、图片和文案时用它校准方向。"
+                      title="分析依据：用户与需求"
+                    >
                 <div className="grid gap-6 xl:grid-cols-3">
                   <LabelSummaryCard
                     items={report.buyer_desires}
@@ -577,13 +576,15 @@ export default async function ProjectPage({
                     title="Differentiator"
                   />
                 </div>
-              </CollapsibleReportSection>
+                    </CollapsibleReportSection>
+                  </section>
 
-              <CollapsibleReportSection
-                defaultOpen={false}
-                description="这里保留完整的策略依据和文案角度，适合在需要复盘或给团队解释时展开看。"
-                title="分析依据：策略依据"
-              >
+                  <section className="scroll-mt-24" id="evidence-strategy">
+                    <CollapsibleReportSection
+                      defaultOpen={false}
+                      description="这里保留完整的策略依据和文案角度，适合在需要复盘或给团队解释时展开看。"
+                      title="分析依据：策略依据"
+                    >
                 <div className="grid gap-6 xl:grid-cols-2">
                   <LabelSummaryCard
                     items={report.comparison_opportunities}
@@ -698,18 +699,21 @@ export default async function ProjectPage({
                     title="文案策略"
                   />
                 </div>
-              </CollapsibleReportSection>
+                    </CollapsibleReportSection>
+                  </section>
+                </div>
+              ) : (
+                <Card className="rounded-[2rem]">
+                  <CardHeader>
+                    <CardTitle>还没有分析结果</CardTitle>
+                    <CardDescription>
+                      评论已经进库了。下一步点击“开始分析”，生成第一版 VOC 报告。
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              )}
             </div>
-          ) : (
-            <Card className="rounded-[2rem]">
-              <CardHeader>
-                <CardTitle>还没有分析结果</CardTitle>
-                <CardDescription>
-                  评论已经进库了。下一步点击“开始分析”，生成第一版 VOC 报告。
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          )}
+          </div>
         </div>
       </main>
     );

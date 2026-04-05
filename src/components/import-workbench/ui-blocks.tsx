@@ -17,7 +17,12 @@ export function FieldBlock({
 }) {
   return (
     <div className={cn("grid gap-2", className)}>
-      <p className={cn("text-sm font-medium", error ? "text-rose-700" : "text-stone-900")}>
+      <p
+        className={cn(
+          "text-sm font-medium",
+          error ? "text-rose-700" : "text-stone-900",
+        )}
+      >
         {label}
         {required ? <span className="ml-1 text-rose-700">*</span> : null}
       </p>
@@ -41,16 +46,18 @@ export function SectionCard({
   children,
 }: {
   title: string;
-  description: string;
+  description?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="grid gap-4 rounded-lg border border-[var(--page-border)] bg-white/78 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
       <div className="grid gap-1">
         <p className="text-sm font-semibold text-stone-900">{title}</p>
-        <p className="text-xs leading-6 text-[var(--page-muted)]">
-          {description}
-        </p>
+        {description && (
+          <p className="text-xs leading-6 text-[var(--page-muted)]">
+            {description}
+          </p>
+        )}
       </div>
       {children}
     </div>

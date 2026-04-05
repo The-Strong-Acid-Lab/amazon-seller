@@ -120,9 +120,6 @@ export function ConsoleShell({
 
             <SidebarFooter>
               <div className="rounded-2xl border border-[var(--page-border)] bg-[var(--page-surface-strong)] p-4">
-                <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-[var(--page-muted)]">
-                  Workspace
-                </p>
                 <p className="mt-3 text-sm font-medium text-stone-900">
                   Single User
                 </p>
@@ -138,9 +135,6 @@ export function ConsoleShell({
           <div className="rounded-[2rem] border border-[var(--page-border)] bg-white/80 p-6 shadow-[0_20px_70px_rgba(41,33,23,0.08)] backdrop-blur sm:p-8">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--page-border)] pb-6">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.28em] text-[var(--page-muted)]">
-                  Workspace
-                </p>
                 <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950 sm:text-4xl">
                   {title}
                 </h1>

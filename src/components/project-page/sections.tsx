@@ -106,10 +106,6 @@ export function AnalysisInputsCard({
     <Card className="rounded-[2rem]">
       <CardHeader>
         <CardTitle>本次分析输入</CardTitle>
-        <CardDescription>
-          这里明确显示当前分析会读取哪些评论来源、哪些竞品，以及哪些 listing
-          信息已经填写，避免结果像黑盒。
-        </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-6">
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">

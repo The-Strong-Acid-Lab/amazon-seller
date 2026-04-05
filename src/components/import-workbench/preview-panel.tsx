@@ -40,20 +40,15 @@ export function ImportPreviewPanel({
     <Card className="overflow-hidden rounded-xl border border-[var(--page-border)] bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(255,250,242,0.86))] shadow-[0_20px_70px_rgba(54,40,24,0.08)] lg:col-span-2">
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-5 space-y-0">
         <div>
-          <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--page-muted)]">
-            Import Preview
-          </p>
           <CardTitle className="mt-3">
             {parsedSourceEntries.length > 0
               ? `已解析 ${parsedSourceEntries.length} 份评论文件`
               : "尚未生成预览"}
           </CardTitle>
           <CardDescription className="mt-2">
-            {parsedSourceEntries.length > 0 ? (
-              "下面按商品来源展示每份评论文件的质量检查和样例，方便横向比较。"
-            ) : (
-              "先在任意商品卡片上传评论文件，然后点击“解析并生成预览”。"
-            )}
+            {parsedSourceEntries.length > 0
+              ? "下面按商品来源展示每份评论文件的质量检查和样例，方便横向比较。"
+              : "先在任意商品卡片上传评论文件，然后点击“解析并生成预览”。"}
           </CardDescription>
           {parsedSourceEntries.length > 0 ? (
             <p className="mt-2 text-xs text-[var(--page-muted)]">
@@ -133,18 +128,21 @@ export function ImportPreviewPanel({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="text-sm font-semibold text-stone-900">
-                        {entry.snapshot.role === "target" ? "我的商品" : "竞品"}：
-                        {entry.snapshot.name}
+                        {entry.snapshot.role === "target" ? "我的商品" : "竞品"}
+                        ：{entry.snapshot.name}
                       </p>
                       <p className="mt-1 text-xs text-[var(--page-muted)]">
-                        市场 {entry.snapshot.market} · 文件 {entry.preview.fileName}
+                        市场 {entry.snapshot.market} · 文件{" "}
+                        {entry.preview.fileName}
                       </p>
                     </div>
                     <Badge
                       className="rounded-full border-stone-300 bg-white px-3 py-1 text-xs font-medium text-stone-600"
                       variant="outline"
                     >
-                      {entry.snapshot.role === "target" ? "我的商品" : "竞品来源"}
+                      {entry.snapshot.role === "target"
+                        ? "我的商品"
+                        : "竞品来源"}
                     </Badge>
                   </div>
 
@@ -190,7 +188,8 @@ export function ImportPreviewPanel({
                         </p>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {ANALYSIS_FIELDS.map((field) => {
-                            const matched = entry.preview.header.includes(field);
+                            const matched =
+                              entry.preview.header.includes(field);
 
                             return (
                               <Badge
@@ -252,20 +251,26 @@ export function ImportPreviewPanel({
                         </TableRow>
                       </TableHeader>
                       <TableBody className="bg-white text-stone-800">
-                        {entry.preview.sampleRows.slice(0, 3).map((row, index) => (
-                          <TableRow key={`${sourceId}-${row.asin}-${index}`}>
-                            <TableCell>{row.asin || "-"}</TableCell>
-                            <TableCell className="max-w-[24rem]">
-                              {row.reviewTitle || "-"}
-                            </TableCell>
-                            <TableCell>{row.rating ?? "-"}</TableCell>
-                            <TableCell>{row.model || "-"}</TableCell>
-                            <TableCell>{row.country || "-"}</TableCell>
-                            <TableCell>{row.reviewDate || "-"}</TableCell>
-                            <TableCell>{row.imageCount > 0 ? "是" : "否"}</TableCell>
-                            <TableCell>{row.hasVideo ? "是" : "否"}</TableCell>
-                          </TableRow>
-                        ))}
+                        {entry.preview.sampleRows
+                          .slice(0, 3)
+                          .map((row, index) => (
+                            <TableRow key={`${sourceId}-${row.asin}-${index}`}>
+                              <TableCell>{row.asin || "-"}</TableCell>
+                              <TableCell className="max-w-[24rem]">
+                                {row.reviewTitle || "-"}
+                              </TableCell>
+                              <TableCell>{row.rating ?? "-"}</TableCell>
+                              <TableCell>{row.model || "-"}</TableCell>
+                              <TableCell>{row.country || "-"}</TableCell>
+                              <TableCell>{row.reviewDate || "-"}</TableCell>
+                              <TableCell>
+                                {row.imageCount > 0 ? "是" : "否"}
+                              </TableCell>
+                              <TableCell>
+                                {row.hasVideo ? "是" : "否"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
                       </TableBody>
                     </Table>
                   </div>
@@ -277,7 +282,7 @@ export function ImportPreviewPanel({
           <Alert className="rounded-2xl border-[var(--page-border)] bg-white/80">
             <AlertTitle>等待预览数据</AlertTitle>
             <AlertDescription>
-              这个区域会一直显示。你在任意商品卡片上传评论文件并点击“解析并生成预览”后，结果会在这里更新。
+              你在任意商品卡片上传评论文件并点击“解析并生成预览”后，结果会在这里更新。
             </AlertDescription>
           </Alert>
         )}

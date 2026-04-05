@@ -319,7 +319,7 @@ function getProjectProgressSummary(
 ) {
   const generatedDataSummary = [
     `评论：${project.reviewCount} 条`,
-    `报告：${project.reportCount > 0 ? `${project.reportCount} 份` : "未生成"}`,
+    `报告：${project.reportCount > 0 ? "已生成" : "未生成"}`,
     `Listing：${project.hasListingDraft ? "已生成" : "未生成"}`,
     `图片：${project.imageAssetCount > 0 ? `${project.imageAssetCount} 张` : "未生成"}`,
     `A+：${project.hasAPlusBrief ? "已生成" : "未生成"}`,

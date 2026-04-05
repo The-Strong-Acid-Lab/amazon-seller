@@ -34,7 +34,7 @@ export function DialogContent({
       <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
         <DialogPrimitive.Content
           className={cn(
-            "scrollbar-hidden w-full max-w-5xl overflow-y-auto rounded-[1.75rem] bg-white p-6 shadow-[0_20px_80px_rgba(15,23,42,0.18)] focus:outline-none",
+            "w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-[var(--page-border)] bg-white p-6 shadow-[0_20px_80px_rgba(15,23,42,0.18)] focus:outline-none",
             className,
           )}
           {...props}

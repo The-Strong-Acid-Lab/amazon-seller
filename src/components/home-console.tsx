@@ -43,12 +43,6 @@ export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
     <ConsoleShell
       actions={
         <>
-          <Badge
-            variant="outline"
-            className="rounded-full border-[var(--page-border)] bg-white/70 px-3 py-1 text-xs text-[var(--page-muted)]"
-          >
-            {projects.length} 个项目
-          </Badge>
           <Button
             className="rounded-full"
             onClick={() => setShowCreateProject(true)}
@@ -92,16 +86,10 @@ export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
           <div className="rounded-[1.75rem] border border-[var(--page-border)] bg-white/90 p-6 shadow-[0_18px_50px_rgba(54,40,24,0.05)]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="font-mono text-[11px] tracking-[0.22em] text-[var(--page-muted)]">
-                  RECENT
-                </p>
                 <h3 className="mt-2 text-xl font-semibold tracking-tight text-stone-950">
                   最近访问
                 </h3>
               </div>
-              <Badge className="rounded-full" variant="outline">
-                最近 3 个
-              </Badge>
             </div>
 
             <div className="mt-5 grid gap-3">
@@ -153,14 +141,14 @@ export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
 
       <Dialog open={showCreateProject} onOpenChange={setShowCreateProject}>
         <DialogOverlay />
-        <DialogContent className="max-w-6xl">
+        <DialogContent
+          className="max-h-[90vh] max-w-6xl"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>新建项目</DialogTitle>
-            <DialogDescription>
-              填写基础信息并导入第一份评论，保存后再进入项目继续完善。
-            </DialogDescription>
           </DialogHeader>
-          <div className="mt-4">
+          <div className="-mx-4 mt-4 scrollbar-hidden max-h-[70vh] overflow-y-auto px-4">
             <ImportWorkbench />
           </div>
           <DialogFooter>
