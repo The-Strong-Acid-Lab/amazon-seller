@@ -38,12 +38,14 @@ export type ThemeItem = {
   theme: string;
   summary: string;
   evidence: string[];
+  mention_count?: number;
 };
 
 export type LabelSummaryItem = {
   label: string;
   summary: string;
   evidence?: string[];
+  mention_count?: number;
 };
 
 export type PersonaItem = {
@@ -285,6 +287,62 @@ function listingToPromptBlock(product: DbProjectProductRow) {
   ].join("\n");
 }
 
+function normalizeThemeItems(
+  items: ThemeItem[] | undefined,
+  maxItems: number,
+) {
+  return (items ?? [])
+    .map((item) => {
+      const rawMentionCount = item.mention_count;
+      const parsedMentionCount =
+        typeof rawMentionCount === "number"
+          ? rawMentionCount
+          : typeof rawMentionCount === "string"
+            ? Number(rawMentionCount)
+            : NaN;
+
+      return {
+        theme: item.theme ?? "",
+        summary: item.summary ?? "",
+        evidence: Array.isArray(item.evidence) ? item.evidence.slice(0, 3) : [],
+        mention_count:
+          Number.isFinite(parsedMentionCount) && parsedMentionCount > 0
+            ? Math.round(parsedMentionCount)
+            : undefined,
+      } satisfies ThemeItem;
+    })
+    .filter((item) => item.theme.trim() && item.summary.trim())
+    .slice(0, maxItems);
+}
+
+function normalizeLabelSummaryItems(
+  items: LabelSummaryItem[] | undefined,
+  maxItems: number,
+) {
+  return (items ?? [])
+    .map((item) => {
+      const rawMentionCount = item.mention_count;
+      const parsedMentionCount =
+        typeof rawMentionCount === "number"
+          ? rawMentionCount
+          : typeof rawMentionCount === "string"
+            ? Number(rawMentionCount)
+            : NaN;
+
+      return {
+        label: item.label ?? "",
+        summary: item.summary ?? "",
+        evidence: Array.isArray(item.evidence) ? item.evidence.slice(0, 3) : [],
+        mention_count:
+          Number.isFinite(parsedMentionCount) && parsedMentionCount > 0
+            ? Math.round(parsedMentionCount)
+            : undefined,
+      } satisfies LabelSummaryItem;
+    })
+    .filter((item) => item.label.trim() && item.summary.trim())
+    .slice(0, maxItems);
+}
+
 function buildPrompt({
   datasetOverview,
   targetOverview,
@@ -330,26 +388,26 @@ function buildPrompt({
         "dataset_overview, target_overview, competitor_overview, target_positive_themes, target_negative_themes, competitor_positive_themes, competitor_negative_themes, buyer_desires, buyer_objections, usage_scenarios, usage_where, usage_when, usage_how, product_what, user_personas, purchase_drivers, negative_opinions, unmet_needs, baseline_requirements, performance_levers, differentiators, comparison_opportunities, comparison_risks, execution_tasks, listing_draft, image_brief, a_plus_brief, voc_response_matrix, image_strategy, copy_strategy",
         "",
         "JSON shape requirements:",
-        '- target_positive_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
-        '- target_negative_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
-        '- competitor_positive_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
-        '- competitor_negative_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
-        '- buyer_desires: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- buyer_objections: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- usage_scenarios: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- usage_where: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- usage_when: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- usage_how: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- product_what: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- target_positive_themes: array of { "theme": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- target_negative_themes: array of { "theme": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- competitor_positive_themes: array of { "theme": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- competitor_negative_themes: array of { "theme": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- buyer_desires: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- buyer_objections: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- usage_scenarios: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- usage_where: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- usage_when: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- usage_how: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- product_what: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
         '- user_personas: array of { "name": string, "who": string, "goal": string, "pain_point": string, "message_angle": string }',
-        '- purchase_drivers: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- negative_opinions: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- unmet_needs: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- baseline_requirements: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- performance_levers: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- differentiators: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- comparison_opportunities: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- comparison_risks: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- purchase_drivers: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- negative_opinions: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- unmet_needs: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- baseline_requirements: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- performance_levers: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- differentiators: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- comparison_opportunities: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- comparison_risks: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
         '- execution_tasks: array of { "task_title": string, "priority": "p1"|"p2"|"p3", "workstream": "positioning"|"listing"|"image"|"ads", "concrete_action": string, "expected_impact": string, "success_signal": string }',
         '- listing_draft: object with title_draft, title_rationale, bullet_drafts[], bullet_rationales[], positioning_statement',
         '- image_brief: array of { "slot": string, "goal": string, "message": string, "supporting_proof": string, "visual_direction": string }',
@@ -360,11 +418,14 @@ function buildPrompt({
         "",
         "Rules:",
         "- target_overview and competitor_overview should echo the dataset stats provided to you without inventing numbers.",
-        "- Keep each theme list to at most 5 items.",
+        "- Keep target_positive_themes and target_negative_themes to at most 5 items each.",
+        "- Keep competitor_positive_themes and competitor_negative_themes to 5 to 8 items when enough evidence exists; otherwise return as many solid items as the evidence supports, up to 8.",
         "- Keep buyer_desires, buyer_objections, usage_scenarios, usage_where, usage_when, usage_how, product_what, purchase_drivers, negative_opinions, unmet_needs, baseline_requirements, performance_levers, differentiators, comparison_opportunities, and comparison_risks to at most 5 items each.",
         "- Keep user_personas to at most 3 items.",
         "- Each user_persona should be grounded in the reviews and should be useful for listing and image decisions, not vague demographics.",
         "- For all label-summary arrays, include 1 to 3 short evidence snippets whenever the reviews support them.",
+        "- For every label-summary item, mention_count must be the number of provided representative reviews that mention or clearly imply that item. Only count the reviews shown in the prompt. Do not estimate beyond the provided sample.",
+        "- For every theme list item, mention_count must be the number of provided representative reviews that mention or clearly imply that theme. Only count the reviews shown in the prompt. Do not estimate beyond the provided sample.",
         "- usage_where should capture locations or environmental contexts of use.",
         "- usage_when should capture timing, moments, or triggers for use.",
         "- usage_how should capture the way people use the product, including posture, routine, or process.",
@@ -442,16 +503,19 @@ function buildCompetitorInsightPrompt({
         "positive_themes, negative_themes, purchase_drivers, negative_opinions, listing_angles, inspiration_for_target",
         "",
         "JSON shape requirements:",
-        '- positive_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
-        '- negative_themes: array of { "theme": string, "summary": string, "evidence": string[] }',
-        '- purchase_drivers: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- negative_opinions: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- listing_angles: array of { "label": string, "summary": string, "evidence": string[] }',
-        '- inspiration_for_target: array of { "label": string, "summary": string, "evidence": string[] }',
+        '- positive_themes: array of { "theme": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- negative_themes: array of { "theme": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- purchase_drivers: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- negative_opinions: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- listing_angles: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
+        '- inspiration_for_target: array of { "label": string, "summary": string, "mention_count": number, "evidence": string[] }',
         "",
         "Rules:",
-        "- Keep each array to at most 4 items.",
+        "- Keep positive_themes and negative_themes to 5 to 8 items when enough evidence exists; otherwise return as many solid items as the evidence supports, up to 8.",
+        "- Keep purchase_drivers, negative_opinions, listing_angles, and inspiration_for_target to at most 4 items each.",
         "- Every evidence entry should be a short review-derived quote or listing-derived paraphrase, no more than 140 characters.",
+        "- For every theme list item, mention_count must be the number of provided representative reviews that mention or clearly imply that theme. Only count the reviews shown in the prompt. Do not estimate beyond the provided sample.",
+        "- For every label-summary item, mention_count must be the number of provided representative reviews that mention or clearly imply that item. Only count the reviews shown in the prompt. Do not estimate beyond the provided sample.",
         "- positive_themes and negative_themes should focus on what buyers repeatedly praise or criticize about this competitor.",
         "- purchase_drivers should explain why buyers choose this competitor.",
         "- negative_opinions should focus on what creates dissatisfaction, risk, or abandonment.",
@@ -505,14 +569,18 @@ function createExportText(report: AnalysisReportShape) {
   lines.push("我的商品正向主题：");
 
   for (const item of report.target_positive_themes) {
-    lines.push(`- ${item.theme}: ${item.summary}`);
+    const countLabel =
+      typeof item.mention_count === "number" ? `（提及 ${item.mention_count} 次）` : "";
+    lines.push(`- ${item.theme}${countLabel}: ${item.summary}`);
   }
 
   lines.push("");
   lines.push("竞品正向主题：");
 
   for (const item of report.competitor_positive_themes) {
-    lines.push(`- ${item.theme}: ${item.summary}`);
+    const countLabel =
+      typeof item.mention_count === "number" ? `（提及 ${item.mention_count} 次）` : "";
+    lines.push(`- ${item.theme}${countLabel}: ${item.summary}`);
   }
 
   lines.push("");
@@ -861,27 +929,40 @@ export async function generateAnalysisReportForProject(
       target_overview: targetOverview,
       competitor_overview: competitorOverview,
       target_positive_themes:
-        targetReviews.length > 0 ? modelReport.target_positive_themes ?? [] : [],
+        targetReviews.length > 0
+          ? normalizeThemeItems(modelReport.target_positive_themes, 5)
+          : [],
       target_negative_themes:
-        targetReviews.length > 0 ? modelReport.target_negative_themes ?? [] : [],
-      competitor_positive_themes: modelReport.competitor_positive_themes ?? [],
-      competitor_negative_themes: modelReport.competitor_negative_themes ?? [],
-      buyer_desires: modelReport.buyer_desires ?? [],
-      buyer_objections: modelReport.buyer_objections ?? [],
-      usage_scenarios: modelReport.usage_scenarios ?? [],
-      usage_where: modelReport.usage_where ?? [],
-      usage_when: modelReport.usage_when ?? [],
-      usage_how: modelReport.usage_how ?? [],
-      product_what: modelReport.product_what ?? [],
+        targetReviews.length > 0
+          ? normalizeThemeItems(modelReport.target_negative_themes, 5)
+          : [],
+      competitor_positive_themes: normalizeThemeItems(
+        modelReport.competitor_positive_themes,
+        8,
+      ),
+      competitor_negative_themes: normalizeThemeItems(
+        modelReport.competitor_negative_themes,
+        8,
+      ),
+      buyer_objections: normalizeLabelSummaryItems(modelReport.buyer_objections, 5),
+      usage_scenarios: normalizeLabelSummaryItems(modelReport.usage_scenarios, 5),
+      usage_where: normalizeLabelSummaryItems(modelReport.usage_where, 5),
+      usage_when: normalizeLabelSummaryItems(modelReport.usage_when, 5),
+      usage_how: normalizeLabelSummaryItems(modelReport.usage_how, 5),
+      product_what: normalizeLabelSummaryItems(modelReport.product_what, 5),
       user_personas: modelReport.user_personas ?? [],
-      purchase_drivers: modelReport.purchase_drivers ?? [],
-      negative_opinions: modelReport.negative_opinions ?? [],
-      unmet_needs: modelReport.unmet_needs ?? [],
-      baseline_requirements: modelReport.baseline_requirements ?? [],
-      performance_levers: modelReport.performance_levers ?? [],
-      differentiators: modelReport.differentiators ?? [],
-      comparison_opportunities: modelReport.comparison_opportunities ?? [],
-      comparison_risks: modelReport.comparison_risks ?? [],
+      buyer_desires: normalizeLabelSummaryItems(modelReport.buyer_desires, 5),
+      purchase_drivers: normalizeLabelSummaryItems(modelReport.purchase_drivers, 5),
+      negative_opinions: normalizeLabelSummaryItems(modelReport.negative_opinions, 5),
+      unmet_needs: normalizeLabelSummaryItems(modelReport.unmet_needs, 5),
+      baseline_requirements: normalizeLabelSummaryItems(modelReport.baseline_requirements, 5),
+      performance_levers: normalizeLabelSummaryItems(modelReport.performance_levers, 5),
+      differentiators: normalizeLabelSummaryItems(modelReport.differentiators, 5),
+      comparison_opportunities: normalizeLabelSummaryItems(
+        modelReport.comparison_opportunities,
+        5,
+      ),
+      comparison_risks: normalizeLabelSummaryItems(modelReport.comparison_risks, 5),
       execution_tasks: sortExecutionTasks(modelReport.execution_tasks ?? []),
       listing_draft: {
         title_draft: modelReport.listing_draft?.title_draft ?? "",
@@ -1039,11 +1120,14 @@ export async function generateCompetitorInsightForProduct({
   );
 
   return {
-    positive_themes: modelInsight.positive_themes ?? [],
-    negative_themes: modelInsight.negative_themes ?? [],
-    purchase_drivers: modelInsight.purchase_drivers ?? [],
-    negative_opinions: modelInsight.negative_opinions ?? [],
-    listing_angles: modelInsight.listing_angles ?? [],
-    inspiration_for_target: modelInsight.inspiration_for_target ?? [],
+    positive_themes: normalizeThemeItems(modelInsight.positive_themes, 8),
+    negative_themes: normalizeThemeItems(modelInsight.negative_themes, 8),
+    purchase_drivers: normalizeLabelSummaryItems(modelInsight.purchase_drivers, 4),
+    negative_opinions: normalizeLabelSummaryItems(modelInsight.negative_opinions, 4),
+    listing_angles: normalizeLabelSummaryItems(modelInsight.listing_angles, 4),
+    inspiration_for_target: normalizeLabelSummaryItems(
+      modelInsight.inspiration_for_target,
+      4,
+    ),
   } as CompetitorInsightShape;
 }

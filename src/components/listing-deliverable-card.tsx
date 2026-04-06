@@ -236,9 +236,6 @@ export function ListingDeliverableCard({
     <Card className="rounded-[2rem]">
       <CardHeader>
         <CardTitle>Listing 可交付稿</CardTitle>
-        <CardDescription>
-          在这里完成标题和五点的最终润色，确认后锁定版本，避免后续反复覆盖。
-        </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-6">
         <div className="grid gap-3 rounded-2xl border border-stone-200 p-4">
@@ -289,9 +286,14 @@ export function ListingDeliverableCard({
             const overLimit = count > BULLET_MAX_LENGTH;
 
             return (
-              <div key={`bullet-${index}`} className="rounded-2xl border border-stone-200 p-4">
+              <div
+                key={`bullet-${index}`}
+                className="rounded-2xl border border-stone-200 p-4"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-stone-900">Bullet {index + 1}</p>
+                  <p className="text-sm font-medium text-stone-900">
+                    Bullet {index + 1}
+                  </p>
                   <p
                     className={cn(
                       "text-xs text-stone-600",
@@ -309,7 +311,9 @@ export function ListingDeliverableCard({
                 />
                 {initialDraft?.bullet_rationales[index] ? (
                   <p className="mt-3 text-xs leading-6 text-stone-600">
-                    <span className="font-medium text-stone-900">写作意图:</span>{" "}
+                    <span className="font-medium text-stone-900">
+                      写作意图:
+                    </span>{" "}
                     {initialDraft.bullet_rationales[index]}
                   </p>
                 ) : null}
@@ -336,11 +340,12 @@ export function ListingDeliverableCard({
           </Button>
         </div>
 
-        {(titleTooLong || hasOverLimitBullet) ? (
+        {titleTooLong || hasOverLimitBullet ? (
           <Alert variant="warning">
             <AlertTitle>存在字符超限</AlertTitle>
             <AlertDescription>
-              标题建议不超过 {TITLE_MAX_LENGTH}，每条 Bullet 建议不超过 {BULLET_MAX_LENGTH}
+              标题建议不超过 {TITLE_MAX_LENGTH}，每条 Bullet 建议不超过{" "}
+              {BULLET_MAX_LENGTH}
               ，避免发布时被截断或报错。
             </AlertDescription>
           </Alert>
@@ -361,7 +366,9 @@ export function ListingDeliverableCard({
         ) : null}
 
         <div className="rounded-2xl border border-stone-200 p-4">
-          <p className="text-sm font-semibold text-stone-900">版本快照（最近 5 条）</p>
+          <p className="text-sm font-semibold text-stone-900">
+            版本快照（最近 5 条）
+          </p>
           <div className="mt-3 grid gap-3">
             {snapshots.length > 0 ? (
               snapshots.map((snapshot) => (
@@ -392,7 +399,9 @@ export function ListingDeliverableCard({
                       size="sm"
                       variant="outline"
                     >
-                      {copyingSnapshotId === snapshot.id ? "正在复制..." : "复制该快照"}
+                      {copyingSnapshotId === snapshot.id
+                        ? "正在复制..."
+                        : "复制该快照"}
                     </Button>
                     <Button
                       className="rounded-full px-4"
@@ -404,25 +413,33 @@ export function ListingDeliverableCard({
                       size="sm"
                       variant="outline"
                     >
-                      {expandedSnapshotId === snapshot.id ? "收起详情" : "查看详情"}
+                      {expandedSnapshotId === snapshot.id
+                        ? "收起详情"
+                        : "查看详情"}
                     </Button>
                   </div>
                   {expandedSnapshotId === snapshot.id ? (
                     <div className="mt-4 grid gap-3 rounded-xl border border-stone-200 bg-white p-3">
                       <div className="grid gap-1">
-                        <p className="text-xs font-semibold text-stone-900">完整标题</p>
+                        <p className="text-xs font-semibold text-stone-900">
+                          完整标题
+                        </p>
                         <p className="whitespace-pre-wrap text-sm leading-6 text-stone-700">
                           {snapshot.title_draft || "（空）"}
                         </p>
                       </div>
                       <div className="grid gap-1">
-                        <p className="text-xs font-semibold text-stone-900">定位句</p>
+                        <p className="text-xs font-semibold text-stone-900">
+                          定位句
+                        </p>
                         <p className="whitespace-pre-wrap text-sm leading-6 text-stone-700">
                           {snapshot.positioning_statement || "（空）"}
                         </p>
                       </div>
                       <div className="grid gap-1">
-                        <p className="text-xs font-semibold text-stone-900">五点描述</p>
+                        <p className="text-xs font-semibold text-stone-900">
+                          五点描述
+                        </p>
                         {snapshot.bullet_drafts.length > 0 ? (
                           <div className="grid gap-2">
                             {snapshot.bullet_drafts.map((bullet, index) => (
@@ -443,7 +460,9 @@ export function ListingDeliverableCard({
                 </div>
               ))
             ) : (
-              <p className="text-sm text-stone-500">还没有保存过 Listing 快照。</p>
+              <p className="text-sm text-stone-500">
+                还没有保存过 Listing 快照。
+              </p>
             )}
           </div>
         </div>

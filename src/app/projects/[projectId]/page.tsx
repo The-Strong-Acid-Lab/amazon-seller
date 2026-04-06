@@ -157,7 +157,7 @@ export default async function ProjectPage({
     const pageSections = [
       { id: "overview", label: "项目概览" },
       { id: "products", label: "商品与竞品" },
-      { id: "imports", label: "追加评论来源" },
+      { id: "imports", label: "追加竞品" },
       { id: "inputs", label: "分析输入" },
       ...(report
         ? [
@@ -241,7 +241,8 @@ export default async function ProjectPage({
                   <AlertTitle>数据已更新，建议重新分析</AlertTitle>
                   <AlertDescription>
                     <p>
-                      最近一次分析时间：{formatDateTime(freshness.latestReportAt)}
+                      最近一次分析时间：
+                      {formatDateTime(freshness.latestReportAt)}
                     </p>
                     <p>
                       最近一次数据更新时间：
@@ -256,9 +257,6 @@ export default async function ProjectPage({
                 <Card className="rounded-[2rem]">
                   <CardHeader>
                     <CardTitle>项目概览</CardTitle>
-                    <CardDescription>
-                      只保留当前真正有用的项：分析状态、最近报告、输入变化和当前基础数据。
-                    </CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-4">
                     <div className="grid gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-5 text-sm leading-7 text-stone-700">
@@ -285,7 +283,9 @@ export default async function ProjectPage({
                         </span>
                         评论 {data.reviews.length} 条 · 竞品{" "}
                         {competitorProducts.length} 个 · 市场{" "}
-                        {targetProduct?.market ?? data.project.target_market ?? "-"}
+                        {targetProduct?.market ??
+                          data.project.target_market ??
+                          "-"}
                       </p>
                       <p>
                         <span className="font-semibold text-stone-950">
@@ -306,7 +306,8 @@ export default async function ProjectPage({
                               reportContext.addedImportsAfterReport.length > 0
                                 ? `新增评论导入 ${reportContext.addedImportsAfterReport.length} 份`
                                 : null,
-                              reportContext.updatedListingsAfterReport.length > 0
+                              reportContext.updatedListingsAfterReport.length >
+                              0
                                 ? `新增 listing 修改 ${reportContext.updatedListingsAfterReport.length} 项`
                                 : null,
                             ]
@@ -391,7 +392,8 @@ export default async function ProjectPage({
                         projectId={data.project.id}
                         reviews={data.reviews.filter((review) =>
                           competitorProducts.some(
-                            (product) => product.id === review.project_product_id,
+                            (product) =>
+                              product.id === review.project_product_id,
                           ),
                         )}
                       />
@@ -468,52 +470,52 @@ export default async function ProjectPage({
                       description="这里放评论统计和主题拆解，用来理解结论从哪里来。日常使用先看上面的执行输出，不够时再展开。"
                       title="分析依据：评论与主题"
                     >
-                <div className="grid gap-6 xl:grid-cols-2">
-                  <OverviewCard
-                    title="我的商品评论概览"
-                    overview={report.target_overview}
-                  />
-                  <OverviewCard
-                    title="竞品评论概览"
-                    overview={report.competitor_overview}
-                  />
-                </div>
+                      <div className="grid gap-6 xl:grid-cols-2">
+                        <OverviewCard
+                          title="我的商品评论概览"
+                          overview={report.target_overview}
+                        />
+                        <OverviewCard
+                          title="竞品评论概览"
+                          overview={report.competitor_overview}
+                        />
+                      </div>
 
-                <div className="grid gap-6 xl:grid-cols-2">
-                  <InsightListCard
-                    description={
-                      (report.target_overview?.review_count ?? 0) > 0
-                        ? "这里反映买家对我的商品的真实认可点。"
-                        : "当前没有我的商品评论，所以这里不会显示主题。"
-                    }
-                    emptyLabel="当前没有我的商品评论。"
-                    items={report.target_positive_themes}
-                    title="我的商品正向主题"
-                  />
-                  <InsightListCard
-                    description={
-                      (report.target_overview?.review_count ?? 0) > 0
-                        ? "这里反映当前最影响我的商品转化的负面反馈。"
-                        : "当前没有我的商品评论，所以这里不会显示主题。"
-                    }
-                    emptyLabel="当前没有我的商品评论。"
-                    items={report.target_negative_themes}
-                    title="我的商品负向主题"
-                  />
-                </div>
+                      <div className="grid gap-6 xl:grid-cols-2">
+                        <InsightListCard
+                          description={
+                            (report.target_overview?.review_count ?? 0) > 0
+                              ? "这里反映买家对我的商品的真实认可点。"
+                              : "当前没有我的商品评论，所以这里不会显示主题。"
+                          }
+                          emptyLabel="当前没有我的商品评论。"
+                          items={report.target_positive_themes}
+                          title="我的商品正向主题"
+                        />
+                        <InsightListCard
+                          description={
+                            (report.target_overview?.review_count ?? 0) > 0
+                              ? "这里反映当前最影响我的商品转化的负面反馈。"
+                              : "当前没有我的商品评论，所以这里不会显示主题。"
+                          }
+                          emptyLabel="当前没有我的商品评论。"
+                          items={report.target_negative_themes}
+                          title="我的商品负向主题"
+                        />
+                      </div>
 
-                <div className="grid gap-6 xl:grid-cols-2">
-                  <InsightListCard
-                    description="竞品被买家反复认可的价值点，通常代表类目里的主流期待。"
-                    items={report.competitor_positive_themes}
-                    title="竞品正向主题"
-                  />
-                  <InsightListCard
-                    description="竞品的负面反馈往往就是我的商品可以切入的机会。"
-                    items={report.competitor_negative_themes}
-                    title="竞品负向主题"
-                  />
-                </div>
+                      <div className="grid gap-6 xl:grid-cols-2">
+                        <InsightListCard
+                          description="竞品被买家反复认可的价值点，通常代表类目里的主流期待。"
+                          items={report.competitor_positive_themes}
+                          title="竞品正向主题"
+                        />
+                        <InsightListCard
+                          description="竞品的负面反馈往往就是我的商品可以切入的机会。"
+                          items={report.competitor_negative_themes}
+                          title="竞品负向主题"
+                        />
+                      </div>
                     </CollapsibleReportSection>
                   </section>
 
@@ -523,59 +525,71 @@ export default async function ProjectPage({
                       description="这里是用户、场景、驱动因素和卖点分层。做定位、图片和文案时用它校准方向。"
                       title="分析依据：用户与需求"
                     >
-                <div className="grid gap-6 xl:grid-cols-3">
-                  <LabelSummaryCard
-                    items={report.buyer_desires}
-                    title="买家想要什么"
-                  />
-                  <LabelSummaryCard
-                    items={report.buyer_objections}
-                    title="买家担心什么"
-                  />
-                  <LabelSummaryCard
-                    items={report.usage_scenarios}
-                    title="使用场景"
-                  />
-                </div>
+                      <div className="grid gap-6 xl:grid-cols-3">
+                        <LabelSummaryCard
+                          items={report.buyer_desires}
+                          title="买家想要什么"
+                        />
+                        <LabelSummaryCard
+                          items={report.buyer_objections}
+                          title="买家担心什么"
+                        />
+                        <LabelSummaryCard
+                          items={report.usage_scenarios}
+                          title="使用场景"
+                        />
+                      </div>
 
-                <div className="grid gap-6 xl:grid-cols-2 2xl:grid-cols-4">
-                  <LabelSummaryCard items={report.usage_where} title="Where" />
-                  <LabelSummaryCard items={report.usage_when} title="When" />
-                  <LabelSummaryCard items={report.usage_how} title="How" />
-                  <LabelSummaryCard items={report.product_what} title="What" />
-                </div>
+                      <div className="grid gap-6 xl:grid-cols-2 2xl:grid-cols-4">
+                        <LabelSummaryCard
+                          items={report.usage_where}
+                          title="Where"
+                        />
+                        <LabelSummaryCard
+                          items={report.usage_when}
+                          title="When"
+                        />
+                        <LabelSummaryCard
+                          items={report.usage_how}
+                          title="How"
+                        />
+                        <LabelSummaryCard
+                          items={report.product_what}
+                          title="What"
+                        />
+                      </div>
 
-                <PersonaCard items={report.user_personas} />
+                      <PersonaCard items={report.user_personas} />
 
-                <div className="grid gap-6 xl:grid-cols-3">
-                  <LabelSummaryCard
-                    items={report.purchase_drivers}
-                    title="Top Purchase Drivers"
-                  />
-                  <LabelSummaryCard
-                    items={report.negative_opinions}
-                    title="Top Negative Opinions"
-                  />
-                  <LabelSummaryCard
-                    items={report.unmet_needs}
-                    title="Unmet Needs"
-                  />
-                </div>
+                      <div className="grid gap-6 xl:grid-cols-3">
+                        <LabelSummaryCard
+                          items={report.purchase_drivers}
+                          title="Top Purchase Drivers"
+                        />
+                        <LabelSummaryCard
+                          items={report.negative_opinions}
+                          title="Top Negative Opinions"
+                        />
+                        <LabelSummaryCard
+                          items={report.unmet_needs}
+                          title="Unmet Needs"
+                        />
+                      </div>
 
-                <div className="grid gap-6 xl:grid-cols-3">
-                  <LabelSummaryCard
-                    items={report.baseline_requirements}
-                    title="Baseline"
-                  />
-                  <LabelSummaryCard
-                    items={report.performance_levers}
-                    title="Performance"
-                  />
-                  <LabelSummaryCard
-                    items={report.differentiators}
-                    title="Differentiator"
-                  />
-                </div>
+                      <div className="grid gap-6 xl:grid-cols-3">
+                        <LabelSummaryCard
+                          items={report.baseline_requirements}
+                          title="Baseline"
+                        />
+                        <LabelSummaryCard
+                          items={report.performance_levers}
+                          title="Performance"
+                        />
+                        <LabelSummaryCard
+                          items={report.differentiators}
+                          title="Differentiator"
+                        />
+                      </div>
                     </CollapsibleReportSection>
                   </section>
 
@@ -585,120 +599,130 @@ export default async function ProjectPage({
                       description="这里保留完整的策略依据和文案角度，适合在需要复盘或给团队解释时展开看。"
                       title="分析依据：策略依据"
                     >
-                <div className="grid gap-6 xl:grid-cols-2">
-                  <LabelSummaryCard
-                    items={report.comparison_opportunities}
-                    title="定位机会"
-                  />
-                  <LabelSummaryCard
-                    items={report.comparison_risks}
-                    title="定位风险"
-                  />
-                </div>
+                      <div className="grid gap-6 xl:grid-cols-2">
+                        <LabelSummaryCard
+                          items={report.comparison_opportunities}
+                          title="定位机会"
+                        />
+                        <LabelSummaryCard
+                          items={report.comparison_risks}
+                          title="定位风险"
+                        />
+                      </div>
 
-                <Card className="rounded-[2rem]">
-                  <CardHeader>
-                    <CardTitle>优先执行清单</CardTitle>
-                    <CardDescription>
-                      不是泛泛建议，而是按优先级排好的动作。先做 P1，再处理
-                      P2、P3。
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="grid gap-4">
-                    {sortVocResponseItems(report.voc_response_matrix).length >
-                    0 ? (
-                      sortVocResponseItems(report.voc_response_matrix).map(
-                        (item) => (
-                          <div
-                            key={`${item.voc_theme}-${item.buyer_signal}`}
-                            className="rounded-2xl border border-stone-200 p-4"
-                          >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge
-                                className="rounded-full"
-                                variant={
-                                  item.priority === "p1" ? "default" : "outline"
-                                }
+                      <Card className="rounded-[2rem]">
+                        <CardHeader>
+                          <CardTitle>优先执行清单</CardTitle>
+                          <CardDescription>
+                            不是泛泛建议，而是按优先级排好的动作。先做
+                            P1，再处理 P2、P3。
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-4">
+                          {sortVocResponseItems(report.voc_response_matrix)
+                            .length > 0 ? (
+                            sortVocResponseItems(
+                              report.voc_response_matrix,
+                            ).map((item) => (
+                              <div
+                                key={`${item.voc_theme}-${item.buyer_signal}`}
+                                className="rounded-2xl border border-stone-200 p-4"
                               >
-                                {formatPriority(item.priority)}
-                              </Badge>
-                              <Badge
-                                className="rounded-full"
-                                variant="secondary"
-                              >
-                                {formatExecutionArea(item.execution_area)}
-                              </Badge>
-                              <Badge className="rounded-full" variant="outline">
-                                {item.voc_theme}
-                              </Badge>
-                              <Badge className="rounded-full" variant="outline">
-                                {item.confidence}
-                              </Badge>
-                            </div>
-                            <p className="mt-3 text-sm text-stone-700">
-                              <span className="font-medium text-stone-900">
-                                为什么现在做:
-                              </span>{" "}
-                              {item.why_now || "未提供"}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge
+                                    className="rounded-full"
+                                    variant={
+                                      item.priority === "p1"
+                                        ? "default"
+                                        : "outline"
+                                    }
+                                  >
+                                    {formatPriority(item.priority)}
+                                  </Badge>
+                                  <Badge
+                                    className="rounded-full"
+                                    variant="secondary"
+                                  >
+                                    {formatExecutionArea(item.execution_area)}
+                                  </Badge>
+                                  <Badge
+                                    className="rounded-full"
+                                    variant="outline"
+                                  >
+                                    {item.voc_theme}
+                                  </Badge>
+                                  <Badge
+                                    className="rounded-full"
+                                    variant="outline"
+                                  >
+                                    {item.confidence}
+                                  </Badge>
+                                </div>
+                                <p className="mt-3 text-sm text-stone-700">
+                                  <span className="font-medium text-stone-900">
+                                    为什么现在做:
+                                  </span>{" "}
+                                  {item.why_now || "未提供"}
+                                </p>
+                                <p className="mt-3 text-sm text-stone-700">
+                                  <span className="font-medium text-stone-900">
+                                    Buyer signal:
+                                  </span>{" "}
+                                  {item.buyer_signal}
+                                </p>
+                                <p className="mt-2 text-sm text-stone-700">
+                                  <span className="font-medium text-stone-900">
+                                    Risk / opportunity:
+                                  </span>{" "}
+                                  {item.risk_or_opportunity}
+                                </p>
+                                <p className="mt-2 text-sm text-stone-700">
+                                  <span className="font-medium text-stone-900">
+                                    Listing:
+                                  </span>{" "}
+                                  {item.recommended_listing_response}
+                                </p>
+                                <p className="mt-2 text-sm text-stone-700">
+                                  <span className="font-medium text-stone-900">
+                                    Image:
+                                  </span>{" "}
+                                  {item.recommended_image_response}
+                                </p>
+                                <p className="mt-2 text-sm text-stone-700">
+                                  <span className="font-medium text-stone-900">
+                                    Ad angle:
+                                  </span>{" "}
+                                  {item.recommended_ad_angle}
+                                </p>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-sm text-stone-500">
+                              还没有策略矩阵。
                             </p>
-                            <p className="mt-3 text-sm text-stone-700">
-                              <span className="font-medium text-stone-900">
-                                Buyer signal:
-                              </span>{" "}
-                              {item.buyer_signal}
-                            </p>
-                            <p className="mt-2 text-sm text-stone-700">
-                              <span className="font-medium text-stone-900">
-                                Risk / opportunity:
-                              </span>{" "}
-                              {item.risk_or_opportunity}
-                            </p>
-                            <p className="mt-2 text-sm text-stone-700">
-                              <span className="font-medium text-stone-900">
-                                Listing:
-                              </span>{" "}
-                              {item.recommended_listing_response}
-                            </p>
-                            <p className="mt-2 text-sm text-stone-700">
-                              <span className="font-medium text-stone-900">
-                                Image:
-                              </span>{" "}
-                              {item.recommended_image_response}
-                            </p>
-                            <p className="mt-2 text-sm text-stone-700">
-                              <span className="font-medium text-stone-900">
-                                Ad angle:
-                              </span>{" "}
-                              {item.recommended_ad_angle}
-                            </p>
-                          </div>
-                        ),
-                      )
-                    ) : (
-                      <p className="text-sm text-stone-500">还没有策略矩阵。</p>
-                    )}
-                  </CardContent>
-                </Card>
+                          )}
+                        </CardContent>
+                      </Card>
 
-                <div className="grid gap-6 xl:grid-cols-2">
-                  <StringListCard
-                    lists={[
-                      {
-                        label: "Title angles",
-                        items: report.copy_strategy?.title_angles ?? [],
-                      },
-                      {
-                        label: "Bullet angles",
-                        items: report.copy_strategy?.bullet_angles ?? [],
-                      },
-                      {
-                        label: "Proof phrases",
-                        items: report.copy_strategy?.proof_phrases ?? [],
-                      },
-                    ]}
-                    title="文案策略"
-                  />
-                </div>
+                      <div className="grid gap-6 xl:grid-cols-2">
+                        <StringListCard
+                          lists={[
+                            {
+                              label: "Title angles",
+                              items: report.copy_strategy?.title_angles ?? [],
+                            },
+                            {
+                              label: "Bullet angles",
+                              items: report.copy_strategy?.bullet_angles ?? [],
+                            },
+                            {
+                              label: "Proof phrases",
+                              items: report.copy_strategy?.proof_phrases ?? [],
+                            },
+                          ]}
+                          title="文案策略"
+                        />
+                      </div>
                     </CollapsibleReportSection>
                   </section>
                 </div>
@@ -707,7 +731,8 @@ export default async function ProjectPage({
                   <CardHeader>
                     <CardTitle>还没有分析结果</CardTitle>
                     <CardDescription>
-                      评论已经进库了。下一步点击“开始分析”，生成第一版 VOC 报告。
+                      评论已经进库了。下一步点击“开始分析”，生成第一版 VOC
+                      报告。
                     </CardDescription>
                   </CardHeader>
                 </Card>

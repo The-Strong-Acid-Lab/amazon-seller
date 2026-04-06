@@ -194,7 +194,7 @@ export function AnalysisInputsCard({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-stone-200 p-4">
+        <div className="">
           <p className="text-sm font-semibold text-stone-900">评论来源文件</p>
           <div className="mt-4 grid gap-3">
             {latestImports.length > 0 ? (
@@ -888,7 +888,12 @@ export function InsightListCard({
 }: {
   title: string;
   description?: string;
-  items: Array<{ theme: string; summary: string; evidence: string[] }>;
+  items: Array<{
+    theme: string;
+    summary: string;
+    evidence: string[];
+    mention_count?: number;
+  }>;
   emptyLabel?: string;
 }) {
   return (
@@ -900,13 +905,31 @@ export function InsightListCard({
       <CardContent className="grid gap-4">
         {items.length > 0 ? (
           items.map((item) => (
-            <div key={item.theme} className="rounded-2xl border border-stone-200 p-4">
-              <p className="text-base font-semibold text-stone-950">{item.theme}</p>
-              <p className="mt-2 text-sm leading-6 text-stone-700">{item.summary}</p>
+            <div
+              key={item.theme}
+              className="rounded-2xl border border-stone-200 p-4"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-base font-semibold text-stone-950">
+                  {item.theme}
+                </p>
+                {typeof item.mention_count === "number" ? (
+                  <p className="text-sm font-medium text-stone-500">
+                    提及 {item.mention_count} 次
+                  </p>
+                ) : null}
+              </div>
+              <p className="mt-2 text-sm leading-6 text-stone-700">
+                {item.summary}
+              </p>
               {item.evidence.length > 0 ? (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {item.evidence.map((evidence) => (
-                    <Badge key={evidence} className="rounded-full" variant="outline">
+                    <Badge
+                      key={evidence}
+                      className="rounded-full"
+                      variant="outline"
+                    >
                       {evidence}
                     </Badge>
                   ))}
@@ -927,7 +950,12 @@ export function LabelSummaryCard({
   items,
 }: {
   title: string;
-  items: Array<{ label: string; summary: string; evidence?: string[] }>;
+  items: Array<{
+    label: string;
+    summary: string;
+    evidence?: string[];
+    mention_count?: number;
+  }>;
 }) {
   return (
     <Card className="rounded-[2rem]">
@@ -938,7 +966,14 @@ export function LabelSummaryCard({
         {items.length > 0 ? (
           items.map((item) => (
             <div key={item.label} className="rounded-2xl border border-stone-200 p-4">
-              <p className="font-semibold text-stone-950">{item.label}</p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="font-semibold text-stone-950">{item.label}</p>
+                {typeof item.mention_count === "number" ? (
+                  <p className="text-sm font-medium text-stone-500">
+                    提及 {item.mention_count} 次
+                  </p>
+                ) : null}
+              </div>
               <p className="mt-2 text-sm leading-6 text-stone-700">{item.summary}</p>
               {item.evidence && item.evidence.length > 0 ? (
                 <div className="mt-3 flex flex-wrap gap-2">

@@ -8,6 +8,7 @@ import {
   buildReferenceImageSignature,
   generateProductIdentityProfile,
 } from "@/lib/product-identity-profile";
+import { selectReferenceImagesForEdit } from "@/lib/reference-image-selection";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 export type ImageGenerationPayload = {
@@ -15,7 +16,9 @@ export type ImageGenerationPayload = {
   goal?: string;
   message?: string;
   supportingProof?: string;
+  recommendedOverlayCopy?: string;
   visualDirection?: string;
+  complianceNotes?: string;
   promptOverride?: string;
 };
 
@@ -52,13 +55,17 @@ function buildPrompts({
   goal,
   message,
   supportingProof,
+  recommendedOverlayCopy,
   visualDirection,
+  complianceNotes,
 }: {
   slot: string;
   goal: string;
   message: string;
   supportingProof: string;
+  recommendedOverlayCopy: string;
   visualDirection: string;
+  complianceNotes: string;
 }) {
   const promptZh = [
     `你是亚马逊电商视觉设计助手。请为 ${slot} 生成一张可用于商品图方案评估的草图。`,
@@ -69,9 +76,12 @@ function buildPrompts({
     message || "体现产品价值点。",
     "支撑证据：",
     supportingProof || "基于评论中的高频诉求。",
+    "建议图上文案（仅供后续排版参考，不要直接在图里渲染文字）：",
+    recommendedOverlayCopy || "不强制叠字。",
     "视觉方向：",
     visualDirection || "简洁、可信、易读。",
-    "限制：不要出现品牌 Logo、商标、夸大医疗承诺、误导性对比文案。",
+    "合规限制：",
+    complianceNotes || "不要出现品牌 Logo、商标、夸大医疗承诺、误导性对比文案。",
     "输出：一张高质量商品图草稿。",
   ].join("\n");
 
@@ -87,9 +97,12 @@ function buildPrompts({
     message || "Communicate product value clearly.",
     "Supporting proof:",
     supportingProof || "Ground in recurring customer feedback.",
+    "Recommended on-image copy (for later layout guidance only; do not render text in the image):",
+    recommendedOverlayCopy || "No required overlay copy.",
     "Visual direction:",
     visualDirection || "Clean, credible, and easy to scan.",
-    "Constraints: no logos, no trademark text, no exaggerated medical claims, no misleading comparisons.",
+    "Compliance notes:",
+    complianceNotes || "No logos, no trademark text, no exaggerated medical claims, no misleading comparisons.",
     "Output one high-quality draft image.",
   ].join("\n");
 
@@ -173,7 +186,9 @@ export async function executeImageGenerationForSlot({
   const goal = sanitizeText(payload.goal);
   const message = sanitizeText(payload.message);
   const supportingProof = sanitizeText(payload.supportingProof);
+  const recommendedOverlayCopy = sanitizeText(payload.recommendedOverlayCopy);
   const visualDirection = sanitizeText(payload.visualDirection);
+  const complianceNotes = sanitizeText(payload.complianceNotes);
   const promptOverride = sanitizeText(payload.promptOverride);
 
   if (!slot) {
@@ -211,7 +226,7 @@ export async function executeImageGenerationForSlot({
       .eq("project_id", projectId)
       .eq("role", "target")
       .order("created_at", { ascending: false })
-      .limit(6),
+      .limit(12),
     supabase
       .from("product_reference_images")
       .select("project_product_id, role, file_hash")
@@ -307,7 +322,9 @@ export async function executeImageGenerationForSlot({
     goal,
     message,
     supportingProof,
+    recommendedOverlayCopy,
     visualDirection,
+    complianceNotes,
   });
   const { promptZh, promptEn } = promptOverride
     ? await (async () => {
@@ -424,11 +441,39 @@ export async function executeImageGenerationForSlot({
     progress: 55,
   });
 
+  const referenceCandidates = targetReferenceImages
+    .filter((image): image is { id: string; file_name: string; image_url: string } =>
+      typeof image.image_url === "string" && image.image_url.length > 0,
+    )
+    .map((image) => ({
+      id: image.id,
+      fileName: image.file_name,
+      imageUrl: image.image_url,
+    }));
+
+  const selectedReferences = await selectReferenceImagesForEdit({
+    client: openai,
+    model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini",
+    slotTitle: slot,
+    goal,
+    message,
+    identitySummary:
+      effectiveIdentityProfile.identity_summary ||
+      effectiveIdentityProfile.product_type ||
+      effectiveIdentityProfile.category ||
+      "",
+    referenceImages: referenceCandidates,
+    maxSelected: 5,
+  });
+
+  const selectedReferenceFiles = referenceCandidates.filter((image) =>
+    selectedReferences.selected_file_names.includes(image.fileName),
+  );
+
+  const editReferenceImages = selectedReferenceFiles.length > 0 ? selectedReferenceFiles : referenceCandidates.slice(0, 4);
+
   const referenceFiles = await Promise.all(
-    targetReferenceImages
-      .filter((image) => typeof image.image_url === "string" && image.image_url.length > 0)
-      .slice(0, 6)
-      .map((image) => urlToUploadableFile(image.image_url as string, image.file_name)),
+    editReferenceImages.map((image) => urlToUploadableFile(image.imageUrl, image.fileName)),
   );
 
   if (referenceFiles.length === 0) {
@@ -439,6 +484,7 @@ export async function executeImageGenerationForSlot({
     model: modelName,
     image: referenceFiles,
     input_fidelity: "high",
+    quality: "medium",
     output_format: "png",
     size: "1024x1024",
     prompt: promptOverride
@@ -447,11 +493,16 @@ export async function executeImageGenerationForSlot({
           "",
           "Edit instructions:",
           "Use the uploaded product photos as the visual source of truth.",
-          `The product identity must remain the same across the uploaded reference images: ${targetReferenceImages
-            .map((image) => image.file_name)
+          `The product identity must remain the same across the selected reference images: ${editReferenceImages
+            .map((image) => image.fileName)
             .join(", ")}.`,
           "Do not replace the product with a similar product.",
           "Preserve product category, silhouette, structure, material impression, and color family.",
+          "Preserve the real structural relationships shown in the reference images.",
+          "Keep separate components separate when they are separate in the reference product.",
+          "Keep integrated components integrated when they are integrated in the reference product.",
+          "Do not merge distinct product parts into one shape.",
+          "Do not split connected product parts into separate objects.",
           `Product type: ${effectiveIdentityProfile.product_type || effectiveIdentityProfile.category || "unknown"}.`,
           `Primary color / material: ${effectiveIdentityProfile.primary_color || "unknown"}.`,
           `Identity summary: ${effectiveIdentityProfile.identity_summary || "Keep the same product identity."}`,
@@ -467,11 +518,16 @@ export async function executeImageGenerationForSlot({
           "",
           "Edit instructions:",
           "Use the uploaded product photos as the visual source of truth.",
-          `The product identity must remain the same across the uploaded reference images: ${targetReferenceImages
-            .map((image) => image.file_name)
+          `The product identity must remain the same across the selected reference images: ${editReferenceImages
+            .map((image) => image.fileName)
             .join(", ")}.`,
           "Do not replace the product with a similar product.",
           "Preserve product category, silhouette, structure, material impression, and color family.",
+          "Preserve the real structural relationships shown in the reference images.",
+          "Keep separate components separate when they are separate in the reference product.",
+          "Keep integrated components integrated when they are integrated in the reference product.",
+          "Do not merge distinct product parts into one shape.",
+          "Do not split connected product parts into separate objects.",
           `Product type: ${effectiveIdentityProfile.product_type || effectiveIdentityProfile.category || "unknown"}.`,
           `Primary color / material: ${effectiveIdentityProfile.primary_color || "unknown"}.`,
           `Identity summary: ${effectiveIdentityProfile.identity_summary || "Keep the same product identity."}`,

@@ -176,7 +176,7 @@ export function StrategySlotCard({
       </div>
 
       {isExpanded ? (
-        <div className="mt-4 grid gap-4 rounded-2xl border border-stone-200 bg-stone-50 p-4">
+        <div className="mt-6 grid gap-4">
           <div className="grid gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-stone-900">
