@@ -174,6 +174,10 @@ export type CompetitorInsightShape = {
   inspiration_for_target: LabelSummaryItem[];
 };
 
+type ListingDraftOnlyShape = {
+  listing_draft: ListingDraftShape;
+};
+
 function requireOpenAiEnv(name: string) {
   const value = process.env[name];
 
@@ -528,6 +532,86 @@ function buildCompetitorInsightPrompt({
         "",
         "Representative competitor reviews:",
         representativeReviews || "No competitor reviews provided.",
+      ].join("\n"),
+    },
+  ];
+
+  return messages;
+}
+
+function buildListingDraftPrompt({
+  datasetOverview,
+  targetOverview,
+  competitorOverview,
+  targetReviews,
+  competitorReviews,
+  targetProducts,
+  competitorProducts,
+}: {
+  datasetOverview: ReturnType<typeof computeDatasetOverview>;
+  targetOverview: ReturnType<typeof computeDatasetOverview>;
+  competitorOverview: ReturnType<typeof computeDatasetOverview>;
+  targetReviews: DbReviewRow[];
+  competitorReviews: DbReviewRow[];
+  targetProducts: DbProjectProductRow[];
+  competitorProducts: DbProjectProductRow[];
+}) {
+  const representativeTargetReviews = pickRepresentativeReviews(targetReviews)
+    .map((review, index) => `${index + 1}. ${reviewToPromptLine(review)}`)
+    .join("\n");
+  const representativeCompetitorReviews = pickRepresentativeReviews(competitorReviews)
+    .map((review, index) => `${index + 1}. ${reviewToPromptLine(review)}`)
+    .join("\n");
+  const targetListingBlocks = targetProducts
+    .map((product, index) => `Target ${index + 1}\n${listingToPromptBlock(product)}`)
+    .join("\n\n");
+  const competitorListingBlocks = competitorProducts
+    .map((product, index) => `Competitor ${index + 1}\n${listingToPromptBlock(product)}`)
+    .join("\n\n");
+
+  const messages: OpenAiMessage[] = [
+    {
+      role: "system",
+      content:
+        "You are an Amazon listing strategist. Return valid JSON only. Do not include markdown. Use the provided reviews and competitor listing inputs to generate only a strong, differentiated listing draft.",
+    },
+    {
+      role: "user",
+      content: [
+        "Generate only the Amazon listing draft for this project.",
+        "Use concise, conversion-focused language.",
+        "Return JSON with this top-level key exactly:",
+        "listing_draft",
+        "",
+        "JSON shape requirements:",
+        '- listing_draft: object with { "title_draft": string, "title_rationale": string, "bullet_drafts": string[], "bullet_rationales": string[], "positioning_statement": string }',
+        "",
+        "Rules:",
+        "- listing_draft.bullet_drafts should contain exactly 5 bullets when enough evidence exists, otherwise as many solid bullets as the evidence supports.",
+        "- listing_draft should reflect a differentiated target product angle, not a generic rewrite.",
+        "- title_rationale should briefly explain the chosen angle in plain language.",
+        "- bullet_rationales should align 1:1 with bullet_drafts.",
+        "- positioning_statement should be short and useful internally, but do not optimize around it over title and bullets.",
+        "- Use listing inputs to judge what competitors are already saying well or poorly, not just what reviews say.",
+        "- When listing inputs are missing, do not invent them; rely on the reviews that are available.",
+        "- Do not invent product features not supported by reviews or listing inputs.",
+        "- Prioritize clarity, differentiation, and conversion value over keyword stuffing.",
+        "",
+        `Global dataset overview: ${JSON.stringify(datasetOverview)}`,
+        `Target review overview: ${JSON.stringify(targetOverview)}`,
+        `Competitor review overview: ${JSON.stringify(competitorOverview)}`,
+        "",
+        "Target listing inputs:",
+        targetListingBlocks || "No target listing inputs provided.",
+        "",
+        "Competitor listing inputs:",
+        competitorListingBlocks || "No competitor listing inputs provided.",
+        "",
+        "Representative target reviews:",
+        representativeTargetReviews || "No target reviews provided.",
+        "",
+        "Representative competitor reviews:",
+        representativeCompetitorReviews || "No competitor reviews provided.",
       ].join("\n"),
     },
   ];
@@ -1130,4 +1214,130 @@ export async function generateCompetitorInsightForProduct({
       4,
     ),
   } as CompetitorInsightShape;
+}
+
+export async function regenerateListingDraftForProject(projectId: string) {
+  const supabase = createAdminSupabaseClient();
+
+  await normalizePendingUploadedReviewsForProject(projectId);
+
+  const [
+    { data: reviews, error: reviewsError },
+    { data: projectProducts, error: projectProductsError },
+    { data: latestReport, error: latestReportError },
+  ] = await Promise.all([
+    supabase
+      .from("reviews")
+      .select(
+        "id, project_product_id, asin, model, review_title, review_body, rating, review_date, country, image_count, has_video",
+      )
+      .eq("project_id", projectId)
+      .order("review_date", { ascending: false }),
+    supabase
+      .from("project_products")
+      .select(
+        "id, role, name, asin, market, product_url, current_title, current_bullets, current_description",
+      )
+      .eq("project_id", projectId),
+    supabase
+      .from("analysis_reports")
+      .select("id, summary_json, strategy_json")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (reviewsError) {
+    throw new Error(reviewsError.message);
+  }
+
+  if (projectProductsError) {
+    throw new Error(projectProductsError.message);
+  }
+
+  if (latestReportError) {
+    throw new Error(latestReportError.message);
+  }
+
+  if (!reviews || reviews.length === 0) {
+    throw new Error("No reviews found for this project.");
+  }
+
+  if (!latestReport) {
+    throw new Error("No analysis report found for this project.");
+  }
+
+  const roleByProductId = new Map(
+    (projectProducts ?? []).map((product) => [product.id, product.role] as const),
+  );
+  const targetProducts = (projectProducts ?? []).filter((product) => product.role === "target");
+  const competitorProducts = (projectProducts ?? []).filter(
+    (product) => product.role === "competitor",
+  );
+  const targetReviews = reviews.filter(
+    (review) =>
+      review.project_product_id && roleByProductId.get(review.project_product_id) === "target",
+  );
+  const competitorReviews = reviews.filter(
+    (review) =>
+      review.project_product_id &&
+      roleByProductId.get(review.project_product_id) === "competitor",
+  );
+
+  const datasetOverview = computeDatasetOverview(reviews);
+  const targetOverview = computeDatasetOverview(targetReviews);
+  const competitorOverview = computeDatasetOverview(competitorReviews);
+
+  const prompt = buildListingDraftPrompt({
+    datasetOverview,
+    targetOverview,
+    competitorOverview,
+    targetReviews,
+    competitorReviews,
+    targetProducts,
+    competitorProducts,
+  });
+
+  const modelResult = await callOpenAi<ListingDraftOnlyShape>(prompt);
+  const listingDraft: ListingDraftShape = {
+    title_draft: modelResult.listing_draft?.title_draft ?? "",
+    title_rationale: modelResult.listing_draft?.title_rationale ?? "",
+    bullet_drafts: modelResult.listing_draft?.bullet_drafts ?? [],
+    bullet_rationales: modelResult.listing_draft?.bullet_rationales ?? [],
+    positioning_statement: modelResult.listing_draft?.positioning_statement ?? "",
+  };
+
+  const summaryJson = (latestReport.summary_json ?? {}) as Partial<AnalysisReportShape>;
+  const strategyJson = (latestReport.strategy_json ?? {}) as Partial<AnalysisReportShape>;
+  const mergedReport = {
+    ...summaryJson,
+    ...strategyJson,
+    dataset_overview: summaryJson.dataset_overview ?? datasetOverview,
+    target_overview: summaryJson.target_overview ?? targetOverview,
+    competitor_overview: summaryJson.competitor_overview ?? competitorOverview,
+    listing_draft: listingDraft,
+  } as AnalysisReportShape;
+
+  const nextStrategyJson = {
+    ...strategyJson,
+    listing_draft: listingDraft,
+  };
+
+  const { error: updateError } = await supabase
+    .from("analysis_reports")
+    .update({
+      strategy_json: nextStrategyJson,
+      export_text: createExportText(mergedReport),
+    })
+    .eq("id", latestReport.id);
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  return {
+    reportId: latestReport.id,
+    listingDraft,
+  };
 }

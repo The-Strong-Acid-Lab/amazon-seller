@@ -430,6 +430,10 @@ export default async function ProjectPage({
                   <section className="scroll-mt-24" id="listing">
                     <ListingDeliverableCard
                       analysisReportId={data.latestReport?.id ?? null}
+                      analysisFreshness={{
+                        status: freshness.status,
+                        reasonText: freshness.reasonText,
+                      }}
                       initialDraft={report.listing_draft}
                       projectId={data.project.id}
                       snapshots={data.listingSnapshots}

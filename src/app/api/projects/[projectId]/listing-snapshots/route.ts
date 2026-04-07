@@ -48,6 +48,22 @@ export async function POST(
     const positioningStatement = sanitizeText(body.positioningStatement);
     const bulletDrafts = sanitizeBulletDrafts(body.bulletDrafts);
 
+    const { count, error: countError } = await supabase
+      .from("listing_snapshots")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", projectId);
+
+    if (countError) {
+      throw new Error(countError.message);
+    }
+
+    if ((count ?? 0) >= 5) {
+      return NextResponse.json(
+        { error: "当前项目暂时最多只保留 5 条版本快照。" },
+        { status: 400 },
+      );
+    }
+
     if (!titleDraft && !positioningStatement && bulletDrafts.length === 0) {
       return NextResponse.json(
         { error: "请至少提供标题、定位句或 Bullet 内容后再保存快照。" },

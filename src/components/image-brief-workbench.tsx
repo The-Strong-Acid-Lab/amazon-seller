@@ -606,46 +606,10 @@ export function ImageBriefWorkbench({
   return (
     <Card className="rounded-[2rem]">
       <CardHeader>
-        <CardTitle>8 图策略工作台</CardTitle>
+        <CardTitle>图片策略</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-6">
         <div className="grid gap-4 rounded-2xl border border-stone-200 p-4">
-          <div className="grid gap-3 xl:grid-cols-3">
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-stone-500">
-                输入状态
-              </p>
-              <p className="mt-3 text-2xl font-semibold text-stone-950">
-                {targetReferenceCount + competitorReferenceCount}
-              </p>
-              <p className="mt-2 text-sm text-stone-600">
-                当前已上传的参考图片总数
-              </p>
-            </div>
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-stone-500">
-                我的商品素材
-              </p>
-              <p className="mt-3 text-2xl font-semibold text-stone-950">
-                {targetReferenceCount}
-              </p>
-              <p className="mt-2 text-sm text-stone-600">
-                至少 1 张后，才允许生成任何槽位方案图
-              </p>
-            </div>
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-stone-500">
-                商品约束
-              </p>
-              <p className="mt-3 text-2xl font-semibold text-stone-950">
-                自动处理
-              </p>
-              <p className="mt-2 text-sm text-stone-600">
-                系统会在后台自动识别商品身份，并用于约束后续图片生成
-              </p>
-            </div>
-          </div>
-
           {targetProduct ? (
             <ReferenceImageSection
               deletingReferenceId={deletingReferenceId}

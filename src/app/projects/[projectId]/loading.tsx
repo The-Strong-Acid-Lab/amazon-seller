@@ -59,7 +59,7 @@ function LoadingGrid() {
           key={index}
           className="rounded-xl border border-[var(--page-border)] bg-white/80"
         >
-          <CardContent className="grid gap-3 p-6">
+          <CardContent className="grid gap-3 p-6 mt-4">
             <div className="h-4 w-20 rounded-full bg-stone-200" />
             <div className="h-10 w-16 rounded-xl bg-stone-100" />
             <div className="h-4 w-24 rounded-full bg-stone-100" />

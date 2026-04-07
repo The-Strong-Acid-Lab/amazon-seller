@@ -1,13 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 const TITLE_MAX_LENGTH = 200;
@@ -36,6 +34,10 @@ type ListingDeliverableCardProps = {
   analysisReportId: string | null;
   initialDraft?: ListingDraft;
   snapshots: ListingSnapshot[];
+  analysisFreshness?: {
+    status: "fresh" | "stale" | "missing";
+    reasonText: string;
+  };
 };
 
 type SnapshotResponse = {
@@ -63,50 +65,50 @@ export function ListingDeliverableCard({
   analysisReportId,
   initialDraft,
   snapshots,
+  analysisFreshness,
 }: ListingDeliverableCardProps) {
   const router = useRouter();
-  const [titleDraft, setTitleDraft] = useState(initialDraft?.title_draft ?? "");
-  const [positioningStatement, setPositioningStatement] = useState(
-    initialDraft?.positioning_statement ?? "",
-  );
-  const [bulletDrafts, setBulletDrafts] = useState<string[]>(
-    normalizeBullets(initialDraft?.bullet_drafts),
-  );
   const [isCopying, setIsCopying] = useState(false);
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
-  const [copyingSnapshotId, setCopyingSnapshotId] = useState<string | null>(null);
-  const [expandedSnapshotId, setExpandedSnapshotId] = useState<string | null>(null);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [copyingSnapshotId, setCopyingSnapshotId] = useState<string | null>(
+    null,
+  );
+  const [expandedSnapshotId, setExpandedSnapshotId] = useState<string | null>(
+    null,
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setTitleDraft(initialDraft?.title_draft ?? "");
-    setPositioningStatement(initialDraft?.positioning_statement ?? "");
-    setBulletDrafts(normalizeBullets(initialDraft?.bullet_drafts));
-  }, [initialDraft]);
+  const titleDraft = initialDraft?.title_draft ?? "";
+  const bulletDrafts = useMemo(
+    () => normalizeBullets(initialDraft?.bullet_drafts),
+    [initialDraft?.bullet_drafts],
+  );
 
   const titleCount = titleDraft.length;
   const titleTooLong = titleCount > TITLE_MAX_LENGTH;
-  const bulletCounts = useMemo(() => bulletDrafts.map((item) => item.length), [bulletDrafts]);
-  const hasOverLimitBullet = bulletCounts.some((count) => count > BULLET_MAX_LENGTH);
+  const bulletCounts = useMemo(
+    () => bulletDrafts.map((item) => item.length),
+    [bulletDrafts],
+  );
+  const hasOverLimitBullet = bulletCounts.some(
+    (count) => count > BULLET_MAX_LENGTH,
+  );
+  const snapshotLimitReached = snapshots.length >= 5;
 
   const hasContent = useMemo(() => {
     return (
       titleDraft.trim().length > 0 ||
-      positioningStatement.trim().length > 0 ||
       bulletDrafts.some((item) => item.trim().length > 0)
     );
-  }, [bulletDrafts, positioningStatement, titleDraft]);
+  }, [bulletDrafts, titleDraft]);
 
   const listingText = useMemo(() => {
     const lines: string[] = [];
 
     if (titleDraft.trim()) {
       lines.push(`标题: ${titleDraft.trim()}`);
-    }
-
-    if (positioningStatement.trim()) {
-      lines.push(`定位句: ${positioningStatement.trim()}`);
     }
 
     const nonEmptyBullets = bulletDrafts
@@ -121,13 +123,7 @@ export function ListingDeliverableCard({
     }
 
     return lines.join("\n");
-  }, [bulletDrafts, positioningStatement, titleDraft]);
-
-  function updateBullet(index: number, value: string) {
-    setBulletDrafts((current) =>
-      current.map((item, itemIndex) => (itemIndex === index ? value : item)),
-    );
-  }
+  }, [bulletDrafts, titleDraft]);
 
   async function handleCopyListing() {
     if (!listingText.trim()) {
@@ -154,10 +150,6 @@ export function ListingDeliverableCard({
 
     if (snapshot.title_draft.trim()) {
       lines.push(`标题: ${snapshot.title_draft.trim()}`);
-    }
-
-    if (snapshot.positioning_statement.trim()) {
-      lines.push(`定位句: ${snapshot.positioning_statement.trim()}`);
     }
 
     if (snapshot.bullet_drafts.length > 0) {
@@ -192,9 +184,39 @@ export function ListingDeliverableCard({
     }
   }
 
+  async function handleRegenerateListing() {
+    setIsRegenerating(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/listing-draft`, {
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "重新生成文案失败。");
+      }
+
+      setMessage("Listing 文案已更新。");
+      router.refresh();
+    } catch (regenerateError) {
+      setError(
+        regenerateError instanceof Error
+          ? regenerateError.message
+          : "重新生成文案失败。",
+      );
+    } finally {
+      setIsRegenerating(false);
+    }
+  }
+
   async function handleSaveSnapshot() {
     if (!hasContent) {
-      setError("请先填写标题、定位句或 Bullet 后再锁定版本。");
+      setError("请先生成标题或 Bullet 后再保存。");
       return;
     }
 
@@ -203,30 +225,39 @@ export function ListingDeliverableCard({
     setMessage(null);
 
     try {
-      const response = await fetch(`/api/projects/${projectId}/listing-snapshots`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const response = await fetch(
+        `/api/projects/${projectId}/listing-snapshots`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            analysisReportId,
+            titleDraft,
+            bulletDrafts: bulletDrafts
+              .map((item) => item.trim())
+              .filter((item) => item.length > 0),
+          }),
         },
-        body: JSON.stringify({
-          analysisReportId,
-          titleDraft,
-          positioningStatement,
-          bulletDrafts: bulletDrafts.map((item) => item.trim()).filter((item) => item.length > 0),
-          source: "manual_lock",
-        }),
-      });
+      );
 
-      const payload = (await response.json().catch(() => ({}))) as SnapshotResponse;
+      const payload = (await response
+        .json()
+        .catch(() => ({}))) as SnapshotResponse;
 
       if (!response.ok) {
         throw new Error(payload.error ?? "保存快照失败。");
       }
 
-      setMessage("当前 Listing 已锁定为版本快照。");
+      setMessage("当前 Listing 已保存。");
       router.refresh();
     } catch (snapshotError) {
-      setError(snapshotError instanceof Error ? snapshotError.message : "保存快照失败。");
+      setError(
+        snapshotError instanceof Error
+          ? snapshotError.message
+          : "保存快照失败。",
+      );
     } finally {
       setIsSavingSnapshot(false);
     }
@@ -235,23 +266,46 @@ export function ListingDeliverableCard({
   return (
     <Card className="rounded-[2rem]">
       <CardHeader>
-        <CardTitle>Listing 可交付稿</CardTitle>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <CardTitle>Listing 可交付稿</CardTitle>
+          <Button
+            className="rounded-full px-5"
+            disabled={isRegenerating}
+            onClick={handleRegenerateListing}
+            variant="outline"
+          >
+            {isRegenerating ? "正在加入队列..." : "重新生成文案"}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="grid gap-6">
-        <div className="grid gap-3 rounded-2xl border border-stone-200 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-stone-900">定位句</p>
-            <Badge className="rounded-full" variant="outline">
-              可编辑
-            </Badge>
-          </div>
-          <Textarea
-            className="min-h-[90px]"
-            onChange={(event) => setPositioningStatement(event.target.value)}
-            placeholder="用于统一标题和五点的核心定位陈述。"
-            value={positioningStatement}
-          />
-        </div>
+        {snapshotLimitReached ? (
+          <Alert variant="warning">
+            <AlertTitle>已达到快照上限</AlertTitle>
+            <AlertDescription>
+              当前项目暂时最多保留 5 条版本快照。
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {analysisFreshness?.status === "stale" ? (
+          <Alert variant="warning">
+            <AlertTitle>当前分析基础已过期</AlertTitle>
+            <AlertDescription>
+              {analysisFreshness.reasonText || "项目数据已经变化。"}{" "}
+              如果变化较大，建议先重新分析项目，再更新 Listing 文案。
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {analysisFreshness?.status === "missing" ? (
+          <Alert variant="warning">
+            <AlertTitle>还没有分析结果</AlertTitle>
+            <AlertDescription>
+              先完成一次项目分析，再生成 Listing 文案会更准确。
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
         <div className="grid gap-3 rounded-2xl border border-stone-200 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -265,15 +319,14 @@ export function ListingDeliverableCard({
               {titleCount}/{TITLE_MAX_LENGTH}
             </p>
           </div>
-          <Textarea
-            className="min-h-[96px]"
-            onChange={(event) => setTitleDraft(event.target.value)}
-            placeholder="建议控制在 200 字符内。"
-            value={titleDraft}
-          />
+          <div className="rounded-2xl bg-stone-50 px-4 py-4">
+            <p className="text-sm leading-7 text-stone-900">
+              {titleDraft || "还没有生成标题。"}
+            </p>
+          </div>
           {initialDraft?.title_rationale ? (
             <p className="text-xs leading-6 text-stone-600">
-              <span className="font-medium text-stone-900">写作意图:</span>{" "}
+              <span className="font-medium text-stone-900">角度意图:</span>{" "}
               {initialDraft.title_rationale}
             </p>
           ) : null}
@@ -282,9 +335,6 @@ export function ListingDeliverableCard({
         <div className="grid gap-4">
           <p className="text-sm font-semibold text-stone-900">五点描述</p>
           {bulletDrafts.map((bullet, index) => {
-            const count = bulletCounts[index] ?? 0;
-            const overLimit = count > BULLET_MAX_LENGTH;
-
             return (
               <div
                 key={`bullet-${index}`}
@@ -294,25 +344,16 @@ export function ListingDeliverableCard({
                   <p className="text-sm font-medium text-stone-900">
                     Bullet {index + 1}
                   </p>
-                  <p
-                    className={cn(
-                      "text-xs text-stone-600",
-                      overLimit && "font-semibold text-rose-600",
-                    )}
-                  >
-                    {count}/{BULLET_MAX_LENGTH}
+                </div>
+                <div className="mt-3 rounded-2xl bg-stone-50 px-4 py-4">
+                  <p className="text-sm leading-7 text-stone-900">
+                    {bullet || "还没有生成这一条 Bullet。"}
                   </p>
                 </div>
-                <Textarea
-                  className="mt-3 min-h-[120px]"
-                  onChange={(event) => updateBullet(index, event.target.value)}
-                  placeholder={`Bullet ${index + 1}`}
-                  value={bullet}
-                />
                 {initialDraft?.bullet_rationales[index] ? (
                   <p className="mt-3 text-xs leading-6 text-stone-600">
                     <span className="font-medium text-stone-900">
-                      写作意图:
+                      角度意图:
                     </span>{" "}
                     {initialDraft.bullet_rationales[index]}
                   </p>
@@ -333,10 +374,10 @@ export function ListingDeliverableCard({
           </Button>
           <Button
             className="rounded-full px-5"
-            disabled={isSavingSnapshot || !hasContent}
+            disabled={isSavingSnapshot || !hasContent || snapshotLimitReached}
             onClick={handleSaveSnapshot}
           >
-            {isSavingSnapshot ? "正在锁定版本..." : "锁定本次采用稿"}
+            {isSavingSnapshot ? "正在保存..." : "保存"}
           </Button>
         </div>
 
@@ -367,7 +408,7 @@ export function ListingDeliverableCard({
 
         <div className="rounded-2xl border border-stone-200 p-4">
           <p className="text-sm font-semibold text-stone-900">
-            版本快照（最近 5 条）
+            版本快照（最多 5 条）
           </p>
           <div className="mt-3 grid gap-3">
             {snapshots.length > 0 ? (
@@ -380,16 +421,12 @@ export function ListingDeliverableCard({
                     <p className="text-sm font-medium text-stone-900">
                       {formatTimestamp(snapshot.created_at)}
                     </p>
-                    <Badge className="rounded-full" variant="outline">
-                      {snapshot.source}
-                    </Badge>
                   </div>
                   <p className="mt-2 text-sm text-stone-700">
                     标题：{snapshot.title_draft || "（空）"}
                   </p>
                   <p className="mt-1 text-xs text-stone-600">
-                    Bullet 数：{snapshot.bullet_drafts.length} · 定位句：
-                    {snapshot.positioning_statement ? "已填写" : "未填写"}
+                    Bullet 数：{snapshot.bullet_drafts.length}
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <Button
@@ -426,14 +463,6 @@ export function ListingDeliverableCard({
                         </p>
                         <p className="whitespace-pre-wrap text-sm leading-6 text-stone-700">
                           {snapshot.title_draft || "（空）"}
-                        </p>
-                      </div>
-                      <div className="grid gap-1">
-                        <p className="text-xs font-semibold text-stone-900">
-                          定位句
-                        </p>
-                        <p className="whitespace-pre-wrap text-sm leading-6 text-stone-700">
-                          {snapshot.positioning_statement || "（空）"}
                         </p>
                       </div>
                       <div className="grid gap-1">

@@ -28,7 +28,7 @@ export function ReferenceImageSection({
   onRequestDelete: (image: ProductReferenceImage) => void;
 }) {
   return (
-    <div className="grid gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3">
+    <div className="grid gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-medium text-stone-900">{title}</p>
@@ -60,7 +60,10 @@ export function ReferenceImageSection({
         {images.length > 0 ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {images.map((image) => (
-              <div key={image.id} className="rounded-lg border border-stone-200 bg-white p-2">
+              <div
+                key={image.id}
+                className="rounded-lg border border-stone-200 bg-white p-2"
+              >
                 {image.image_url ? (
                   <ImageLightbox
                     alt={image.file_name}
@@ -72,7 +75,9 @@ export function ReferenceImageSection({
                     无预览图
                   </div>
                 )}
-                <p className="mt-2 truncate text-xs text-stone-600">{image.file_name}</p>
+                <p className="mt-2 truncate text-xs text-stone-600">
+                  {image.file_name}
+                </p>
                 <Button
                   className="mt-2 w-full rounded-full"
                   disabled={deletingReferenceId === image.id}
