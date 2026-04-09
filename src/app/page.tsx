@@ -42,11 +42,6 @@ export default async function Home() {
             <h1 className="max-w-4xl text-4xl font-semibold tracking-tight text-stone-950 sm:text-6xl">
               把评论、Listing 和图片策略串成一个真正能落地的 Amazon 增长工作台。
             </h1>
-            <p className="max-w-3xl text-base leading-8 text-stone-600 sm:text-lg">
-              这个页面先作为 `www.amazonlistingboost.com`
-              的最小占位页。后续这里会放产品介绍、
-              案例、价格和登录入口。当前先直接进入 console。
-            </p>
           </div>
 
           <div className="flex flex-wrap gap-3">

@@ -643,7 +643,7 @@ export function ImageBriefWorkbench({
           )}
 
           {competitorProducts.length > 0 ? (
-            <div className="grid gap-3">
+            <div className="grid gap-3 rounded-lg border border-stone-200 p-3">
               <p className="text-xs font-medium text-stone-700">
                 竞品图片库（可选，但建议上传用于构图/信息层级/画面套路对比）
               </p>

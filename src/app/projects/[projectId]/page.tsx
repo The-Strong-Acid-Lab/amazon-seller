@@ -186,10 +186,6 @@ export default async function ProjectPage({
               <h1 className="mt-3 text-3xl font-semibold tracking-tight text-stone-950 sm:text-4xl">
                 {data.project.name}
               </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--page-muted)]">
-                当前项目已保存 {data.reviews.length}{" "}
-                条评论。下一步是把这些评论转成可操作的 VOC 洞察和转化策略。
-              </p>
             </div>
 
             <div className="grid gap-3">
