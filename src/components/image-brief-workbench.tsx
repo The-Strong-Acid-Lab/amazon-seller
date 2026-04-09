@@ -4,9 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeleteConfirmDialog } from "@/components/image-strategy-workbench/delete-confirm-dialog";
 import { ReferenceImageSection } from "@/components/image-strategy-workbench/reference-image-section";
 import { StrategySlotCard } from "@/components/image-strategy-workbench/strategy-slot-card";
@@ -55,7 +53,6 @@ export function ImageBriefWorkbench({
   const [generatingSlot, setGeneratingSlot] = useState<string | null>(null);
   const [keepingAssetId, setKeepingAssetId] = useState<string | null>(null);
   const [savingSlotId, setSavingSlotId] = useState<string | null>(null);
-  const [isSavingAll, setIsSavingAll] = useState(false);
   const [uploadingProductId, setUploadingProductId] = useState<string | null>(null);
   const [uploadingFileCount, setUploadingFileCount] = useState(0);
   const [deletingReferenceId, setDeletingReferenceId] = useState<string | null>(null);
@@ -228,6 +225,17 @@ export function ImageBriefWorkbench({
       draft.conversionGoal !== slot.conversionGoal ||
       draft.recommendedOverlayCopy !== slot.recommendedOverlayCopy
     );
+  }
+
+  function getPromptOverrideForGeneration(slot: ImageStrategySlotPlan) {
+    const currentPrompt = getPromptValue(slot).trim();
+    const suggestedPrompt = buildSuggestedPrompt(slot).trim();
+
+    if (!currentPrompt || currentPrompt === suggestedPrompt) {
+      return undefined;
+    }
+
+    return currentPrompt;
   }
 
   function getPromptValue(slot: ImageStrategySlotPlan) {
@@ -474,8 +482,10 @@ export function ImageBriefWorkbench({
           goal: draft.purpose,
           message: draft.conversionGoal,
           supportingProof: slot.evidence,
+          recommendedOverlayCopy: draft.recommendedOverlayCopy,
           visualDirection: slot.visualDirection,
-          promptOverride: getPromptValue(slot),
+          complianceNotes: slot.complianceNotes,
+          promptOverride: getPromptOverrideForGeneration(slot),
           force: Boolean(options?.force),
         }),
       });
@@ -540,18 +550,6 @@ export function ImageBriefWorkbench({
     }
   }
 
-  async function handleSaveAll() {
-    setIsSavingAll(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      await saveSlots(strategySlots.map((slot) => slot.id));
-    } finally {
-      setIsSavingAll(false);
-    }
-  }
-
   async function handleKeep(asset: ImageAsset) {
     setKeepingAssetId(asset.id);
     setError(null);
@@ -608,75 +606,14 @@ export function ImageBriefWorkbench({
   return (
     <Card className="rounded-[2rem]">
       <CardHeader>
-        <CardTitle>8 图策略工作台</CardTitle>
-        <CardDescription>
-          先汇总自己的图片和竞品图片，再生成固定 8 个 Amazon 图片槽位的策略、可编辑
-          提示词和图片方案版本。
-        </CardDescription>
+        <CardTitle>图片策略</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-6">
         <div className="grid gap-4 rounded-2xl border border-stone-200 p-4">
-          <div className="grid gap-3 xl:grid-cols-3">
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-stone-500">
-                输入状态
-              </p>
-              <p className="mt-3 text-2xl font-semibold text-stone-950">
-                {targetReferenceCount + competitorReferenceCount}
-              </p>
-              <p className="mt-2 text-sm text-stone-600">当前已上传的参考图片总数</p>
-            </div>
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-stone-500">
-                我的商品素材
-              </p>
-              <p className="mt-3 text-2xl font-semibold text-stone-950">
-                {targetReferenceCount}
-              </p>
-              <p className="mt-2 text-sm text-stone-600">
-                至少 1 张后，才允许生成任何槽位方案图
-              </p>
-            </div>
-            <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-[0.24em] text-stone-500">
-                商品约束
-              </p>
-              <p className="mt-3 text-2xl font-semibold text-stone-950">
-                自动处理
-              </p>
-              <p className="mt-2 text-sm text-stone-600">
-                系统会在后台自动识别商品身份，并用于约束后续图片生成
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-stone-200 bg-stone-50 px-4 py-3">
-            <div>
-              <p className="text-sm font-semibold text-stone-900">专业工作流</p>
-              <p className="mt-1 text-sm text-stone-600">
-                先定 8 张图各自的销售任务，再看提示词，再生成图片方案。每张图生成后都会自动做一次商品一致性校验。
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge className="rounded-full" variant="outline">
-                1 主图
-              </Badge>
-              <Badge className="rounded-full" variant="outline">
-                7 副图
-              </Badge>
-              <Badge className="rounded-full" variant="outline">
-                提示词可编辑
-              </Badge>
-              <Badge className="rounded-full" variant="outline">
-                图片后台生成
-              </Badge>
-            </div>
-          </div>
-
           {targetProduct ? (
             <ReferenceImageSection
               deletingReferenceId={deletingReferenceId}
-              description="这些图片是所有 8 张图策略的产品身份锚点。"
+              description=""
               emptyMessage="还没有上传我的商品素材图。生成任何方案图之前必须先上传至少 1 张。"
               images={referenceImagesByProduct.get(targetProduct.id) ?? []}
               isUploading={uploadingProductId === targetProduct.id}
@@ -692,17 +629,21 @@ export function ImageBriefWorkbench({
                   item: image,
                 })
               }
-              onUpload={(files) => handleReferenceUpload(targetProduct.id, files)}
+              onUpload={(files) =>
+                handleReferenceUpload(targetProduct.id, files)
+              }
               title={`我的商品素材库：${targetProduct.name ?? "未命名我的商品"}`}
               uploadingFileCount={uploadingFileCount}
-              uploadLabel="支持一次多选多张图片"
+              uploadLabel=""
             />
           ) : (
-            <p className="text-sm text-rose-700">当前项目没有“我的商品”，无法上传必需素材。</p>
+            <p className="text-sm text-rose-700">
+              当前项目没有“我的商品”，无法上传必需素材。
+            </p>
           )}
 
           {competitorProducts.length > 0 ? (
-            <div className="grid gap-3">
+            <div className="grid gap-3 rounded-lg border border-stone-200 p-3">
               <p className="text-xs font-medium text-stone-700">
                 竞品图片库（可选，但建议上传用于构图/信息层级/画面套路对比）
               </p>
@@ -726,7 +667,9 @@ export function ImageBriefWorkbench({
                         item: image,
                       })
                     }
-                    onUpload={(files) => handleReferenceUpload(competitor.id, files)}
+                    onUpload={(files) =>
+                      handleReferenceUpload(competitor.id, files)
+                    }
                     title={`竞品：${competitor.name ?? "未命名竞品"}`}
                     uploadingFileCount={uploadingFileCount}
                     uploadLabel="支持一次多选多张图片"
@@ -738,37 +681,6 @@ export function ImageBriefWorkbench({
         </div>
 
         <div className="grid gap-4">
-          <div className="rounded-2xl border border-stone-200 bg-stone-50 px-4 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-stone-900">8 个固定图片槽位</p>
-                <p className="mt-1 text-sm text-stone-600">
-                  每个槽位先定义销售任务、证据、合规和提示词，再决定是否生成图片方案。未通过商品一致性校验的图片会直接标记失败，不能当成有效版本。
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge className="rounded-full" variant="default">
-                  主图
-                </Badge>
-              <Badge className="rounded-full" variant="outline">
-                副图 7 张
-              </Badge>
-              <Badge className="rounded-full" variant="outline">
-                后台自动锁定商品身份
-              </Badge>
-              <Button
-                className="rounded-full"
-                disabled={isSavingAll}
-                  onClick={() => void handleSaveAll()}
-                  size="sm"
-                  variant="outline"
-                >
-                  {isSavingAll ? "保存中..." : "保存全部策略"}
-                </Button>
-              </div>
-            </div>
-          </div>
-
           {strategySlots.map((slot) => (
             <StrategySlotCard
               canGenerate={targetReferenceCount > 0}
@@ -795,14 +707,27 @@ export function ImageBriefWorkbench({
                   item: asset,
                 })
               }
-              onDraftChange={(field, value) => updateSlotDraft(slot, field, value)}
+              onDraftChange={(field, value) =>
+                updateSlotDraft(slot, field, value)
+              }
               onGenerate={() => handleGenerate(slot.id)}
               onKeepAsset={handleKeep}
               onPromptChange={(value) =>
-                setPromptOverrides((current) => ({
-                  ...current,
-                  [slot.id]: value,
-                }))
+                setPromptOverrides((current) => {
+                  const suggestedPrompt = buildSuggestedPrompt(slot).trim();
+                  const nextValue = value.trim();
+
+                  if (nextValue === suggestedPrompt) {
+                    const next = { ...current };
+                    delete next[slot.id];
+                    return next;
+                  }
+
+                  return {
+                    ...current,
+                    [slot.id]: value,
+                  };
+                })
               }
               onResetPrompt={() =>
                 setPromptOverrides((current) => ({
@@ -812,10 +737,14 @@ export function ImageBriefWorkbench({
               }
               onSave={() => handleSaveSlot(slot.id)}
               onToggleAssetPrompt={(assetId) =>
-                setExpandedAssetId((current) => (current === assetId ? null : assetId))
+                setExpandedAssetId((current) =>
+                  current === assetId ? null : assetId,
+                )
               }
               onToggleExpand={() =>
-                setExpandedSlotId((current) => (current === slot.id ? null : slot.id))
+                setExpandedSlotId((current) =>
+                  current === slot.id ? null : slot.id,
+                )
               }
               promptValue={getPromptValue(slot)}
               slot={slot}
@@ -851,7 +780,9 @@ export function ImageBriefWorkbench({
           <div className="rounded-2xl border border-stone-200 p-4">
             <p className="text-sm font-semibold text-stone-900">当前起步规则</p>
             <div className="mt-3 grid gap-2 text-sm text-stone-700">
-              <p>1. 所有图片策略都围绕固定 8 槽位，而不是零散 Image 2 / Image 3。</p>
+              <p>
+                1. 所有图片策略都围绕固定 8 槽位，而不是零散 Image 2 / Image 3。
+              </p>
               <p>2. 提示词先可见、可改，再调用生成模型。</p>
               <p>3. 主图和副图使用不同的合规约束。</p>
               <p>4. 后续会再把文案叠加、尺寸线和 icon 渲染从生图流程里拆开。</p>

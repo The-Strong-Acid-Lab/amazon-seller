@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -173,9 +173,6 @@ export function ProductListingEditor({
             ? "我的商品 Listing 输入"
             : "竞品 Listing 输入"}
         </CardTitle>
-        <CardDescription>
-          先手动粘贴标题、bullet 和描述。后续分析会把评论和 listing 一起看。
-        </CardDescription>
       </CardHeader>
       <CardContent>{content}</CardContent>
     </Card>

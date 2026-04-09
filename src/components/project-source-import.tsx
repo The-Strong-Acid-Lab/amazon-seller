@@ -162,10 +162,7 @@ export function ProjectSourceImport({
   return (
     <Card className="rounded-[2rem]">
       <CardHeader>
-        <CardTitle>追加评论来源</CardTitle>
-        <CardDescription>
-          在当前项目里继续追加新的竞品评论来源，不再新建 project。
-        </CardDescription>
+        <CardTitle>追加竞品</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-5">
         <div className="grid gap-4 md:grid-cols-2">

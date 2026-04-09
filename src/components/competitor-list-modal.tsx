@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { CompetitorInsightShape } from "@/lib/analysis";
 import { InsightListCard, LabelSummaryCard } from "@/components/project-page/sections";
@@ -13,13 +13,13 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogOverlay,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
 type CompetitorProduct = {
   id: string;
@@ -45,6 +45,20 @@ type CompetitorReview = {
   country: string | null;
   image_count: number;
   has_video: boolean;
+};
+
+type CompetitorInsightRunStatus = "queued" | "running" | "completed" | "failed";
+type CompetitorInsightRun = {
+  id: string;
+  status: CompetitorInsightRunStatus;
+  stage: string;
+  progress: number;
+  model_name: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export function CompetitorListModal({
@@ -164,68 +178,94 @@ function CompetitorDetailContent({
   const stats = buildReviewStats(reviews);
   const [insight, setInsight] = useState<CompetitorInsightShape | null>(null);
   const [cachedUpdatedAt, setCachedUpdatedAt] = useState<string | null>(null);
+  const [runState, setRunState] = useState<CompetitorInsightRun | null>(null);
   const [isLoadingCached, setIsLoadingCached] = useState(true);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const positiveSamples = reviews
-    .filter((review) => (review.rating ?? 0) >= 4)
-    .slice(0, 3);
-  const negativeSamples = reviews
-    .filter((review) => (review.rating ?? 0) <= 2)
-    .slice(0, 3);
 
-  useEffect(() => {
-    let isCancelled = false;
+  const isAnalyzing =
+    isSubmitting || runState?.status === "queued" || runState?.status === "running";
 
-    async function loadCachedInsight() {
-      setIsLoadingCached(true);
-      setError(null);
-      setInsight(null);
-      setCachedUpdatedAt(null);
+  const loadCachedInsight = useCallback(async () => {
+    setIsLoadingCached(true);
+    setError(null);
 
-      try {
-        const response = await fetch(
-          `/api/projects/${projectId}/products/${competitor.id}/analyze`,
-        );
+    try {
+      const response = await fetch(
+        `/api/projects/${projectId}/products/${competitor.id}/analyze`,
+      );
 
-        if (response.status === 404) {
-          return;
-        }
+      const payload = (await response.json()) as {
+        error?: string;
+        insight?: CompetitorInsightShape | null;
+        updatedAt?: string | null;
+        run?: CompetitorInsightRun | null;
+      };
 
-        const payload = (await response.json()) as {
-          error?: string;
-          insight?: CompetitorInsightShape;
-          updatedAt?: string;
-        };
-
-        if (!response.ok) {
-          throw new Error(payload.error ?? "读取竞品洞察失败。");
-        }
-
-        if (!isCancelled) {
-          setInsight(payload.insight ?? null);
-          setCachedUpdatedAt(payload.updatedAt ?? null);
-        }
-      } catch (loadError) {
-        if (!isCancelled) {
-          setError(loadError instanceof Error ? loadError.message : "读取竞品洞察失败。");
-        }
-      } finally {
-        if (!isCancelled) {
-          setIsLoadingCached(false);
-        }
+      if (!response.ok) {
+        throw new Error(payload.error ?? "读取竞品洞察失败。");
       }
+
+      setInsight(payload.insight ?? null);
+      setCachedUpdatedAt(payload.updatedAt ?? null);
+      setRunState(payload.run ?? null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "读取竞品洞察失败。");
+    } finally {
+      setIsLoadingCached(false);
     }
-
-    void loadCachedInsight();
-
-    return () => {
-      isCancelled = true;
-    };
   }, [competitor.id, projectId]);
 
+  useEffect(() => {
+    void loadCachedInsight();
+  }, [loadCachedInsight]);
+
+  useEffect(() => {
+    const supabase = createBrowserSupabaseClient();
+    const channel = supabase
+      .channel(`competitor-insight-runs:${competitor.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "competitor_insight_runs",
+          filter: `project_product_id=eq.${competitor.id}`,
+        },
+        (payload) => {
+          const run = payload.new as CompetitorInsightRun | undefined;
+
+          if (!run?.id) {
+            return;
+          }
+
+          setRunState(run);
+          setIsSubmitting(false);
+
+          if (run.status === "failed") {
+            setError(run.error_message ?? "生成竞品洞察失败。");
+          } else {
+            setError(null);
+          }
+
+          if (run.status === "completed") {
+            void loadCachedInsight();
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [competitor.id, loadCachedInsight]);
+
   async function handleAnalyzeCompetitor() {
-    setIsAnalyzing(true);
+    if (isAnalyzing) {
+      return;
+    }
+
+    setIsSubmitting(true);
     setError(null);
 
     try {
@@ -237,22 +277,33 @@ function CompetitorDetailContent({
       );
       const payload = (await response.json()) as {
         error?: string;
-        insight?: CompetitorInsightShape;
-        updatedAt?: string;
+        runId?: string;
+        runStatus?: CompetitorInsightRunStatus;
+        runStage?: string;
+        runProgress?: number;
       };
 
-      if (!response.ok || !payload.insight) {
+      if (!response.ok) {
         throw new Error(payload.error ?? "生成竞品洞察失败。");
       }
-
-      setInsight(payload.insight);
-      setCachedUpdatedAt(payload.updatedAt ?? null);
+      setRunState((current) => ({
+        id: payload.runId ?? current?.id ?? crypto.randomUUID(),
+        status: payload.runStatus ?? "queued",
+        stage: payload.runStage ?? "queued",
+        progress: payload.runProgress ?? 0,
+        model_name: current?.model_name ?? null,
+        error_message: null,
+        started_at: current?.started_at ?? null,
+        completed_at: null,
+        created_at: current?.created_at ?? new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }));
     } catch (analysisError) {
       setError(
         analysisError instanceof Error ? analysisError.message : "生成竞品洞察失败。",
       );
     } finally {
-      setIsAnalyzing(false);
+      setIsSubmitting(false);
     }
   }
 
@@ -261,9 +312,6 @@ function CompetitorDetailContent({
       <div className="flex items-start justify-between gap-4 border-b border-stone-200 px-6 py-6 md:px-8">
         <DialogHeader>
           <DialogTitle>{competitor.name ?? "未命名竞品"}</DialogTitle>
-          <DialogDescription>
-            先看这个竞品自己的评论结构和 listing，再决定它对我的商品的参考价值。
-          </DialogDescription>
         </DialogHeader>
         <DialogClose className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 text-xl text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900">
           ×
@@ -285,62 +333,13 @@ function CompetitorDetailContent({
             />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
-            <Card className="rounded-[1.5rem]">
-              <CardHeader>
-                <CardTitle>基础信息</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-2 text-sm text-stone-700">
-                <p>
-                  <span className="font-medium text-stone-900">ASIN:</span>{" "}
-                  {competitor.asin ?? "-"}
-                </p>
-                <p>
-                  <span className="font-medium text-stone-900">市场:</span>{" "}
-                  {competitor.market ?? "-"}
-                </p>
-                <p>
-                  <span className="font-medium text-stone-900">状态:</span>{" "}
-                  {competitor.is_launched ? "已上线" : "未上线"}
-                </p>
-                <p className="break-all">
-                  <span className="font-medium text-stone-900">URL:</span>{" "}
-                  {competitor.product_url ?? "-"}
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-[1.5rem]">
-              <CardHeader>
-                <CardTitle>评论信号</CardTitle>
-                <CardDescription>
-                  这里先展示这个竞品自己的评论样本，帮助你快速感知它被夸和被骂的点。
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-4">
-                <ReviewSampleGroup
-                  title="高分样本"
-                  items={positiveSamples}
-                  emptyLabel="暂无高分样本。"
-                />
-                <ReviewSampleGroup
-                  title="低分样本"
-                  items={negativeSamples}
-                  emptyLabel="暂无低分样本。"
-                />
-              </CardContent>
-            </Card>
-          </div>
+          <ProductListingEditor projectId={projectId} product={competitor} />
 
           <Card className="rounded-[1.5rem]">
             <CardHeader>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <CardTitle>竞品洞察</CardTitle>
-                  <CardDescription>
-                    单独分析这个竞品的评论和
-                    listing，看看它强在哪、弱在哪，以及对 target 有什么启发。
-                  </CardDescription>
                 </div>
                 <Button
                   className="rounded-full"
@@ -351,7 +350,9 @@ function CompetitorDetailContent({
                   {isLoadingCached
                     ? "正在读取..."
                     : isAnalyzing
-                      ? "正在生成..."
+                      ? runState?.status === "queued"
+                        ? "已加入队列..."
+                        : `正在生成... ${runState?.progress ?? 0}%`
                       : insight
                         ? "重新生成洞察"
                         : "生成竞品洞察"}
@@ -370,6 +371,12 @@ function CompetitorDetailContent({
                 <p className="text-sm text-stone-500">
                   当前展示的是已保存洞察，更新时间：
                   {formatDateTime(cachedUpdatedAt)}
+                </p>
+              ) : null}
+
+              {isAnalyzing ? (
+                <p className="text-sm text-stone-500">
+                  竞品洞察正在后台生成中。你可以离开当前页面，完成后会自动刷新。
                 </p>
               ) : null}
 
@@ -416,31 +423,11 @@ function CompetitorDetailContent({
                 </div>
               ) : (
                 <p className="text-sm text-stone-500">
-                  当前还没有已保存的竞品洞察。先点上面的“生成竞品洞察”，再看这个竞品自己的主题、驱动因素和对
-                  target 的启发。
+                  当前还没有已保存的竞品洞察。先点上面的“生成竞品洞察”，再看这个竞品自己的主题、驱动因素和对我的商品的启发。
                 </p>
               )}
             </CardContent>
           </Card>
-
-          <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
-            <Card className="rounded-[1.5rem]">
-              <CardHeader>
-                <CardTitle>Listing 录入说明</CardTitle>
-                <CardDescription>
-                  这里先手动粘贴该竞品的标题、bullets
-                  和描述。重新分析后，系统会把评论和 listing 一起看。
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3 text-sm leading-7 text-stone-700">
-                <p>1. 先补标题，明确竞品在主打什么。</p>
-                <p>2. 再补 bullets，看它如何组织卖点顺序。</p>
-                <p>3. 描述和备注用于补充页面表达或你观察到的定位信息。</p>
-              </CardContent>
-            </Card>
-
-            <ProductListingEditor projectId={projectId} product={competitor} />
-          </div>
         </div>
       </div>
 
@@ -449,42 +436,6 @@ function CompetitorDetailContent({
           关闭
         </DialogClose>
       </DialogFooter>
-    </div>
-  );
-}
-
-function ReviewSampleGroup({
-  title,
-  items,
-  emptyLabel,
-}: {
-  title: string;
-  items: CompetitorReview[];
-  emptyLabel: string;
-}) {
-  return (
-    <div className="grid gap-3">
-      <p className="text-sm font-semibold text-stone-900">{title}</p>
-      {items.length > 0 ? (
-        items.map((item) => (
-          <div key={item.id} className="rounded-2xl border border-stone-200 p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge className="rounded-full" variant="outline">
-                {item.rating ?? "-"} 星
-              </Badge>
-              <Badge className="rounded-full" variant="outline">
-                {item.review_date ?? "-"}
-              </Badge>
-            </div>
-            <p className="mt-2 text-sm font-medium text-stone-900">{item.review_title || "无标题"}</p>
-            <p className="mt-2 text-sm leading-6 text-stone-700">
-              {item.review_body.slice(0, 220) || "无正文"}
-            </p>
-          </div>
-        ))
-      ) : (
-        <p className="text-sm text-stone-500">{emptyLabel}</p>
-      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { ConsoleShell } from "@/components/console-shell";
 import { ImportWorkbench } from "@/components/import-workbench";
 import { type ProjectListItem, ProjectsList } from "@/components/projects-list";
 import { Badge } from "@/components/ui/badge";
@@ -20,107 +21,156 @@ export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
   const analyzedCount = projects.filter(
     (project) => project.latestReportAt,
   ).length;
+  const draftCount = projects.filter(
+    (project) => !project.latestReportAt && project.status !== "analyzing",
+  ).length;
+  const latestProjects = [...projects]
+    .sort((left, right) => {
+      const leftTimestamp = new Date(
+        left.latestReportAt ?? left.created_at,
+      ).getTime();
+      const rightTimestamp = new Date(
+        right.latestReportAt ?? right.created_at,
+      ).getTime();
+      return rightTimestamp - leftTimestamp;
+    })
+    .slice(0, 3);
+
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
 
   return (
-    <main className="min-h-screen px-4 py-8 text-stone-950 sm:px-6 lg:px-10">
-      <div className="mx-auto grid max-w-[88rem] gap-6">
-        <section>
-          <div className="overflow-hidden rounded-xl border border-[var(--page-border)] bg-white/78 shadow-[0_20px_70px_rgba(41,33,23,0.08)] backdrop-blur">
-            <div className="grid gap-6 px-6 py-6 sm:px-8">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <Badge
-                  variant="outline"
-                  className="rounded-md border-[var(--page-border)] bg-white/75 px-2.5 py-1 font-mono text-[11px] tracking-[0.2em] text-[var(--page-muted)]"
-                >
-                  AMAZON SELLER RESEARCH CONSOLE
-                </Badge>
-                <div className="rounded-md border border-[var(--page-border)] bg-[var(--page-accent-soft)] px-3 py-1.5 font-mono text-[11px] text-[#8d5b32]">
-                  MODE: SINGLE USER
-                </div>
-              </div>
+    <ConsoleShell
+      actions={
+        <>
+          <Button
+            className="rounded-full"
+            onClick={() => setShowCreateProject(true)}
+            type="button"
+          >
+            新建项目
+          </Button>
+        </>
+      }
+      description="新建一个商品项目，或继续已有项目。"
+      title="Projects"
+    >
+      <div className="grid gap-6">
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
+          <div className="rounded-[1.75rem] border border-[var(--page-border)] bg-[linear-gradient(180deg,rgba(255,250,242,0.98),rgba(255,255,255,0.92))] p-6 shadow-[0_18px_50px_rgba(54,40,24,0.06)]">
+            <h2 className="mt-4 max-w-3xl text-3xl font-semibold tracking-tight text-stone-950">
+              管理你的商品项目。
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--page-muted)]">
+              新建一个项目，上传评论和素材，然后继续生成
+              Listing、图片和页面方案。
+            </p>
 
-              <h1 className="text-3xl font-semibold tracking-tight text-stone-950 sm:text-4xl">
-                控制台总览
-              </h1>
-              <p className="max-w-4xl text-sm leading-7 text-[var(--page-muted)]">
-                一个项目只服务一个我的商品。先导入评论与竞品，再输出
-                listing、图片和 A+ 的执行方案。
-              </p>
-
-              <div className="grid gap-3 md:grid-cols-3">
-                <ConsoleStat label="总项目数" value={String(projects.length)} />
-                <ConsoleStat label="已分析项目" value={String(analyzedCount)} />
-                <ConsoleStat
-                  label="待分析项目"
-                  value={String(projects.length - analyzedCount)}
-                />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-6">
-          <div className="flex flex-wrap items-end justify-between gap-4 rounded-lg border border-[var(--page-border)] bg-white/68 px-5 py-4 shadow-[0_12px_40px_rgba(54,40,24,0.06)] backdrop-blur">
-            <div>
-              <p className="font-mono text-[11px] tracking-[0.2em] text-[var(--page-muted)]">
-                PROJECT INDEX
-              </p>
-              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-stone-950">
-                项目列表
-              </h2>
-              <p className="mt-1 text-sm leading-7 text-[var(--page-muted)]">
-                先在这里管理项目，后面可以直接接会员配额。
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <SummaryPill label="总项目数" value={String(projects.length)} />
-              <SummaryPill label="已分析项目" value={String(analyzedCount)} />
-            </div>
-          </div>
-
-          <ProjectsList
-            projects={projects}
-            onCreateProject={() => setShowCreateProject(true)}
-          />
-        </section>
-
-        {showCreateProject ? (
-          <section className="grid gap-4 rounded-xl border border-[var(--page-border)] bg-[linear-gradient(180deg,rgba(255,251,245,0.9),rgba(255,255,255,0.72))] px-4 py-4 shadow-[0_20px_70px_rgba(54,40,24,0.08)] sm:px-6 sm:py-6">
-            <div className="flex flex-wrap items-start justify-between gap-3 px-2">
-              <div>
-                <p className="font-mono text-[11px] tracking-[0.2em] text-[var(--page-muted)]">
-                  NEW PROJECT
-                </p>
-                <h2 className="mt-1 text-2xl font-semibold tracking-tight text-stone-950">
-                  新建项目
-                </h2>
-                <p className="mt-2 max-w-3xl text-sm leading-7 text-[var(--page-muted)]">
-                  这里负责创建新项目并导入第一份评论。后续追加竞品评论在项目详情页里做。
-                </p>
-              </div>
+            <div className="mt-6 flex flex-wrap gap-3">
               <Button
-                className="rounded-md"
-                onClick={() => setConfirmCloseOpen(true)}
+                className="rounded-full px-5"
+                onClick={() => setShowCreateProject(true)}
                 type="button"
-                variant="destructive"
               >
-                取消
+                新建项目
               </Button>
             </div>
-            <ImportWorkbench />
-          </section>
-        ) : null}
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <ConsoleStat label="总项目数" value={String(projects.length)} />
+              <ConsoleStat label="已分析项目" value={String(analyzedCount)} />
+              <ConsoleStat label="草稿项目" value={String(draftCount)} />
+            </div>
+          </div>
+
+          <div className="rounded-[1.75rem] border border-[var(--page-border)] bg-white/90 p-6 shadow-[0_18px_50px_rgba(54,40,24,0.05)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="mt-2 text-xl font-semibold tracking-tight text-stone-950">
+                  最近访问
+                </h3>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3">
+              {latestProjects.length > 0 ? (
+                latestProjects.map((project) => (
+                  <div
+                    key={project.id}
+                    className="rounded-2xl border border-[var(--page-border)] bg-[var(--page-surface-strong)] px-4 py-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-stone-950">
+                          {project.name}
+                        </p>
+                        {/* <p className="mt-1 truncate text-sm text-[var(--page-muted)]">
+                          {project.product_name ?? "未命名我的商品"}
+                        </p> */}
+                      </div>
+                      <Badge className="rounded-full" variant="outline">
+                        {project.target_market ?? "-"}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--page-muted)]">
+                      <span>
+                        {project.latestReportAt ? "最近分析" : "创建时间"}
+                      </span>
+                      <span>·</span>
+                      <span>
+                        {formatDate(
+                          project.latestReportAt ?? project.created_at,
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-[var(--page-border)] px-4 py-6 text-sm text-[var(--page-muted)]">
+                  还没有项目。先新建第一个项目。
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4">
+          <ProjectsList projects={projects} />
+        </section>
       </div>
+
+      <Dialog open={showCreateProject} onOpenChange={setShowCreateProject}>
+        <DialogOverlay />
+        <DialogContent
+          className="max-h-[90vh] max-w-6xl"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>新建项目</DialogTitle>
+          </DialogHeader>
+          <div className="-mx-4 mt-4 scrollbar-hidden max-h-[70vh] overflow-y-auto px-4">
+            <ImportWorkbench />
+          </div>
+          <DialogFooter>
+            <Button
+              className="rounded-full"
+              onClick={() => setConfirmCloseOpen(true)}
+              type="button"
+              variant="destructive"
+            >
+              关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={confirmCloseOpen} onOpenChange={setConfirmCloseOpen}>
         <DialogOverlay />
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>关闭新建项目区域？</DialogTitle>
+            <DialogTitle>关闭新建项目窗口？</DialogTitle>
             <DialogDescription>
-              关闭后将收起“新建项目”区域，已填写但未保存的内容会丢失。
+              关闭后将退出“新建项目”窗口，已填写但未保存的内容会丢失。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -144,25 +194,25 @@ export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </main>
-  );
-}
-
-function SummaryPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-[var(--page-border)] bg-white/78 px-3 py-2 text-sm text-[var(--page-muted)] backdrop-blur">
-      <span className="font-medium text-stone-900">{label}</span>: {value}
-    </div>
+    </ConsoleShell>
   );
 }
 
 function ConsoleStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-[var(--page-border)] bg-[var(--page-surface-strong)] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+    <div className="rounded-2xl border border-[var(--page-border)] bg-white/78 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
       <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--page-muted)]">
         {label}
       </p>
       <p className="mt-3 text-2xl font-semibold text-stone-950">{value}</p>
     </div>
   );
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
 }
