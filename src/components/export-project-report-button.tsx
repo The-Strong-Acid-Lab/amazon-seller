@@ -82,7 +82,7 @@ export function ExportProjectReportButton({
     <div className="grid gap-3">
       <div className="flex flex-wrap items-center justify-end gap-3">
         <Button
-          className="rounded-full px-5"
+          className="px-5"
           disabled={disabled || isCopying || isDownloading}
           onClick={handleCopy}
           variant="outline"
@@ -90,7 +90,7 @@ export function ExportProjectReportButton({
           {isCopying ? "正在复制..." : "复制摘要"}
         </Button>
         <Button
-          className="rounded-full px-5"
+          className="px-5"
           disabled={disabled || isCopying || isDownloading}
           onClick={handleDownload}
           variant="secondary"

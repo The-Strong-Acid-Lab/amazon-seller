@@ -136,7 +136,7 @@ export function CompetitorListModal({
                     <p className="text-sm text-stone-600">ASIN: {competitor.asin ?? "-"}</p>
                   </div>
                   <DialogTrigger asChild>
-                    <Button className="rounded-full" variant="outline">
+                    <Button variant="outline">
                       查看竞品详情
                     </Button>
                   </DialogTrigger>
@@ -342,7 +342,6 @@ function CompetitorDetailContent({
                   <CardTitle>竞品洞察</CardTitle>
                 </div>
                 <Button
-                  className="rounded-full"
                   disabled={isAnalyzing || isLoadingCached}
                   onClick={handleAnalyzeCompetitor}
                   variant="outline"

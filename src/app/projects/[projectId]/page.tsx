@@ -182,7 +182,7 @@ export default async function ProjectPage({
             <div>
               <div className="flex items-center gap-3">
                 <Link href="/console">
-                  <Button className="rounded-full" size="sm" variant="outline">
+                  <Button size="sm" variant="outline">
                     返回 Console
                   </Button>
                 </Link>

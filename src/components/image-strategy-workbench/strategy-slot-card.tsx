@@ -110,11 +110,8 @@ export function StrategySlotCard({
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          <Select
-            onValueChange={onModelChange}
-            value={selectedModelId}
-          >
-            <SelectTrigger className="h-9 min-w-[10.5rem] rounded-md border-stone-300 bg-white px-4 text-sm text-stone-900 focus-visible:border-stone-400 focus-visible:ring-0">
+          <Select onValueChange={onModelChange} value={selectedModelId}>
+            <SelectTrigger className="h-9 min-w-[10.5rem] rounded-md border-stone-300 bg-white px-3 text-sm text-stone-900 focus-visible:border-stone-400 focus-visible:ring-0">
               <SelectValue placeholder="选择模型" />
             </SelectTrigger>
             <SelectContent align="end">
@@ -126,7 +123,6 @@ export function StrategySlotCard({
             </SelectContent>
           </Select>
           <Button
-            className="rounded-full"
             onClick={onToggleExpand}
             size="sm"
             variant="outline"
@@ -134,7 +130,6 @@ export function StrategySlotCard({
             {isExpanded ? "收起策略" : "查看策略"}
           </Button>
           <Button
-            className="rounded-full"
             disabled={isSaving}
             onClick={() => void onSave()}
             size="sm"
@@ -143,7 +138,6 @@ export function StrategySlotCard({
             {isSaving ? "保存中..." : "保存槽位"}
           </Button>
           <Button
-            className="rounded-full"
             disabled={isGenerating || !canGenerate}
             onClick={() => void onGenerate()}
             size="sm"
@@ -213,7 +207,6 @@ export function StrategySlotCard({
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button
-                  className="rounded-full"
                   onClick={onResetPrompt}
                   size="sm"
                   variant="outline"
@@ -221,7 +214,6 @@ export function StrategySlotCard({
                   恢复建议提示词
                 </Button>
                 <Button
-                  className="rounded-full"
                   disabled={isSaving}
                   onClick={() => void onSave()}
                   size="sm"

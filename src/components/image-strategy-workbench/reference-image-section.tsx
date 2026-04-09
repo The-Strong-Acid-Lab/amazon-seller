@@ -79,7 +79,7 @@ export function ReferenceImageSection({
                   {image.file_name}
                 </p>
                 <Button
-                  className="mt-2 w-full rounded-full"
+                  className="mt-2 w-full"
                   disabled={deletingReferenceId === image.id}
                   onClick={() => onRequestDelete(image)}
                   size="sm"

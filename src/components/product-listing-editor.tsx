@@ -143,7 +143,6 @@ export function ProductListingEditor({
 
       <div className="flex flex-wrap items-center gap-3">
         <Button
-          className="rounded-full"
           disabled={isSaving}
           onClick={handleSave}
         >

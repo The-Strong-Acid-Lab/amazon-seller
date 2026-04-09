@@ -176,7 +176,7 @@ export function ProjectsList({
                     className="flex-1 min-w-[8rem]"
                     href={`/projects/${project.id}`}
                   >
-                    <Button className="w-full rounded-full">查看项目</Button>
+                    <Button className="w-full">查看项目</Button>
                   </Link>
                   <Dialog
                     open={projectToDelete?.id === project.id}
@@ -223,7 +223,6 @@ export function ProjectsList({
 
                       <DialogFooter>
                         <Button
-                          className="rounded-full"
                           variant="outline"
                           onClick={() => {
                             setProjectToDelete(null);
@@ -233,7 +232,6 @@ export function ProjectsList({
                           取消
                         </Button>
                         <Button
-                          className="rounded-full"
                           disabled={isDeleting}
                           variant="destructive"
                           onClick={handleDeleteProject}

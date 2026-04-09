@@ -64,7 +64,6 @@ export function ProductIdentityProfileSection({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
-            className="rounded-full"
             disabled={isGenerating || sourceImageCount === 0}
             onClick={() => void onGenerate()}
             size="sm"
@@ -77,7 +76,6 @@ export function ProductIdentityProfileSection({
                 : "识别商品身份"}
           </Button>
           <Button
-            className="rounded-full"
             disabled={!profile || isConfirmed || isConfirming}
             onClick={() => void onConfirm()}
             size="sm"

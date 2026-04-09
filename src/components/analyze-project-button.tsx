@@ -150,7 +150,7 @@ export function AnalyzeProjectButton({
   return (
     <div className="grid gap-3">
       <Button
-        className="rounded-full px-5"
+        className="px-5"
         disabled={isAnalyzing}
         onClick={handleAnalyze}
       >

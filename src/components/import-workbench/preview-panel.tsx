@@ -58,7 +58,7 @@ export function ImportPreviewPanel({
         </div>
         <div className="flex min-w-[12rem] flex-col items-end gap-3">
           <Button
-            className="rounded-full px-5"
+            className="px-5"
             disabled={!canStartAnalysis || isSaving}
             onClick={onStartAnalysis}
             type="button"

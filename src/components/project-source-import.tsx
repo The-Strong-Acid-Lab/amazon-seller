@@ -212,14 +212,14 @@ export function ProjectSourceImport({
 
         <div className="flex flex-wrap items-center gap-3">
           <Button
-            className="rounded-full px-5"
+            className="px-5"
             disabled={isPreviewLoading}
             onClick={handlePreview}
           >
             {isPreviewLoading ? "正在解析..." : "解析预览"}
           </Button>
           <Button
-            className="rounded-full px-5"
+            className="px-5"
             disabled={!preview || !file || isSaving}
             variant="outline"
             onClick={handleSave}

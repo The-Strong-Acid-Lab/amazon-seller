@@ -492,7 +492,7 @@ export function ImportWorkbench() {
 
             <div className="flex flex-wrap items-center gap-3">
               <Button
-                className="rounded-full px-5"
+                className="px-5"
                 disabled={isLoading}
                 type="submit"
               >

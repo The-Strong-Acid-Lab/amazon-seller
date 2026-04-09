@@ -44,7 +44,6 @@ export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
       actions={
         <>
           <Button
-            className="rounded-full"
             onClick={() => setShowCreateProject(true)}
             type="button"
           >
@@ -68,7 +67,7 @@ export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
 
             <div className="mt-6 flex flex-wrap gap-3">
               <Button
-                className="rounded-full px-5"
+                className="px-5"
                 onClick={() => setShowCreateProject(true)}
                 type="button"
               >
@@ -153,7 +152,6 @@ export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
           </div>
           <DialogFooter>
             <Button
-              className="rounded-full"
               onClick={() => setConfirmCloseOpen(true)}
               type="button"
               variant="destructive"

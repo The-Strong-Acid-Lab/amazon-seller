@@ -70,7 +70,7 @@ export function ImageConceptCard({
 
       <div className="mt-3 grid gap-2">
         <Button
-          className="rounded-full px-4"
+          className="px-4"
           disabled={asset.is_kept || keepingAssetId === asset.id || asset.status === "failed"}
           onClick={() => void onKeep(asset)}
           size="sm"
@@ -79,7 +79,7 @@ export function ImageConceptCard({
           {keepingAssetId === asset.id ? "处理中..." : "保留这个版本"}
         </Button>
         <Button
-          className="rounded-full px-4"
+          className="px-4"
           disabled={deletingAssetId === asset.id}
           onClick={() => onDelete(asset)}
           size="sm"
@@ -88,7 +88,7 @@ export function ImageConceptCard({
           {deletingAssetId === asset.id ? "删除中..." : "删除方案图"}
         </Button>
         <Button
-          className="rounded-full px-4"
+          className="px-4"
           onClick={() => onTogglePrompt(asset.id)}
           size="sm"
           variant="secondary"

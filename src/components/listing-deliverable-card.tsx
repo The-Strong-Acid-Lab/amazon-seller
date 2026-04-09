@@ -269,7 +269,7 @@ export function ListingDeliverableCard({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <CardTitle>Listing 可交付稿</CardTitle>
           <Button
-            className="rounded-full px-5"
+            className="px-5"
             disabled={isRegenerating}
             onClick={handleRegenerateListing}
             variant="outline"
@@ -365,7 +365,7 @@ export function ListingDeliverableCard({
 
         <div className="flex flex-wrap items-center gap-3">
           <Button
-            className="rounded-full px-5"
+            className="px-5"
             disabled={isCopying || !hasContent}
             onClick={handleCopyListing}
             variant="outline"
@@ -373,7 +373,7 @@ export function ListingDeliverableCard({
             {isCopying ? "正在复制..." : "一键复制全套文案"}
           </Button>
           <Button
-            className="rounded-full px-5"
+            className="px-5"
             disabled={isSavingSnapshot || !hasContent || snapshotLimitReached}
             onClick={handleSaveSnapshot}
           >
@@ -430,7 +430,7 @@ export function ListingDeliverableCard({
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <Button
-                      className="rounded-full px-4"
+                      className="px-4"
                       disabled={copyingSnapshotId === snapshot.id}
                       onClick={() => handleCopySnapshot(snapshot)}
                       size="sm"
@@ -441,7 +441,7 @@ export function ListingDeliverableCard({
                         : "复制该快照"}
                     </Button>
                     <Button
-                      className="rounded-full px-4"
+                      className="px-4"
                       onClick={() =>
                         setExpandedSnapshotId((current) =>
                           current === snapshot.id ? null : snapshot.id,

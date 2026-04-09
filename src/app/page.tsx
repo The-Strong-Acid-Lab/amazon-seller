@@ -45,10 +45,10 @@ export default async function Home() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <Button asChild className="rounded-full px-6">
+            <Button asChild className="px-6">
               <Link href={consoleUrl}>进入 Console</Link>
             </Button>
-            <Button asChild className="rounded-full px-6" variant="outline">
+            <Button asChild className="px-6" variant="outline">
               <Link href={consoleUrl}>登录后进入</Link>
             </Button>
           </div>

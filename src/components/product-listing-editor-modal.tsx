@@ -46,7 +46,7 @@ export function ProductListingEditorModal({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button className="rounded-full" variant="outline">
+        <Button variant="outline">
           {triggerLabel ?? `编辑${roleLabel}`}
         </Button>
       </DialogTrigger>
