@@ -13,6 +13,7 @@ import type {
   DeleteTarget,
   ImageAsset,
   ImageGenerationRun,
+  ImageModelOption,
   ProductOption,
   ProductReferenceImage,
   SlotDraftFields,
@@ -28,6 +29,21 @@ import {
   type PersistedImageStrategySlot,
 } from "@/lib/image-strategy";
 
+const IMAGE_MODEL_OPTIONS: ImageModelOption[] = [
+  {
+    id: "openai:gpt-image-1.5",
+    label: "GPT Image 1.5",
+    provider: "openai",
+    model: "gpt-image-1.5",
+  },
+  {
+    id: "gemini:gemini-2.5-flash-image",
+    label: "Nano Banana 2",
+    provider: "gemini",
+    model: "gemini-2.5-flash-image",
+  },
+];
+
 export function ImageBriefWorkbench({
   projectId,
   brief,
@@ -35,6 +51,8 @@ export function ImageBriefWorkbench({
   assets,
   generationRuns,
   savedSlots,
+  defaultImageProvider,
+  defaultImageModel,
   targetProduct,
   competitorProducts,
   referenceImages,
@@ -45,6 +63,8 @@ export function ImageBriefWorkbench({
   assets: ImageAsset[];
   generationRuns: ImageGenerationRun[];
   savedSlots: PersistedImageStrategySlot[];
+  defaultImageProvider: "openai" | "gemini";
+  defaultImageModel: string;
   targetProduct: ProductOption | null;
   competitorProducts: ProductOption[];
   referenceImages: ProductReferenceImage[];
@@ -62,9 +82,11 @@ export function ImageBriefWorkbench({
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraftFields>>({});
   const [promptOverrides, setPromptOverrides] = useState<Record<string, string>>({});
+  const [selectedModelBySlot, setSelectedModelBySlot] = useState<Record<string, string>>({});
   const [runStateBySlot, setRunStateBySlot] = useState<Record<string, ImageGenerationRun>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const defaultImageModelOptionId = `${defaultImageProvider}:${defaultImageModel}`;
 
   const strategySlots = useMemo(() => {
     const slots = buildImageStrategySlots({ brief, strategy });
@@ -91,6 +113,20 @@ export function ImageBriefWorkbench({
       return next;
     });
   }, [strategySlots]);
+
+  useEffect(() => {
+    setSelectedModelBySlot((current) => {
+      const next = { ...current };
+
+      for (const slot of strategySlots) {
+        if (!next[slot.id]) {
+          next[slot.id] = defaultImageModelOptionId;
+        }
+      }
+
+      return next;
+    });
+  }, [defaultImageModelOptionId, strategySlots]);
 
   useEffect(() => {
     const nextRuns = generationRuns.reduce<Record<string, ImageGenerationRun>>((accumulator, run) => {
@@ -455,6 +491,10 @@ export function ImageBriefWorkbench({
     }
 
     const draft = getSlotDraft(slot.id, slot);
+    const selectedModelId = selectedModelBySlot[slot.id] ?? defaultImageModelOptionId;
+    const selectedModel =
+      IMAGE_MODEL_OPTIONS.find((option) => option.id === selectedModelId) ??
+      IMAGE_MODEL_OPTIONS[0];
 
     if (targetReferenceCount === 0) {
       setError("请先上传至少 1 张我的商品图片，再生成方案图。");
@@ -486,6 +526,8 @@ export function ImageBriefWorkbench({
           visualDirection: slot.visualDirection,
           complianceNotes: slot.complianceNotes,
           promptOverride: getPromptOverrideForGeneration(slot),
+          imageProvider: selectedModel.provider,
+          imageModel: selectedModel.model,
           force: Boolean(options?.force),
         }),
       });
@@ -516,6 +558,7 @@ export function ImageBriefWorkbench({
             status: payload.runStatus,
             stage: payload.runStage ?? "queued",
             progress: payload.runProgress ?? 0,
+            model_name: selectedModel.model,
           } as ImageGenerationRun,
         }));
       }
@@ -696,6 +739,7 @@ export function ImageBriefWorkbench({
               isSaving={savingSlotId === slot.id}
               keepingAssetId={keepingAssetId}
               key={slot.id}
+              modelOptions={IMAGE_MODEL_OPTIONS}
               onDeleteAsset={(asset) =>
                 setDeleteTarget({
                   kind: "asset",
@@ -712,6 +756,12 @@ export function ImageBriefWorkbench({
               }
               onGenerate={() => handleGenerate(slot.id)}
               onKeepAsset={handleKeep}
+              onModelChange={(value) =>
+                setSelectedModelBySlot((current) => ({
+                  ...current,
+                  [slot.id]: value,
+                }))
+              }
               onPromptChange={(value) =>
                 setPromptOverrides((current) => {
                   const suggestedPrompt = buildSuggestedPrompt(slot).trim();
@@ -747,6 +797,7 @@ export function ImageBriefWorkbench({
                 )
               }
               promptValue={getPromptValue(slot)}
+              selectedModelId={selectedModelBySlot[slot.id] ?? defaultImageModelOptionId}
               slot={slot}
               generationRun={runStateBySlot[slot.id] ?? null}
               slotAssets={resolveSlotAssets(slot.id, slot.sourceBriefSlot)}

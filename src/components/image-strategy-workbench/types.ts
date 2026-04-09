@@ -101,6 +101,13 @@ export type SlotDraftFields = {
   recommendedOverlayCopy: string;
 };
 
+export type ImageModelOption = {
+  id: string;
+  label: string;
+  provider: "openai" | "gemini";
+  model: string;
+};
+
 export function formatDateTime(value: string) {
   return new Date(value).toLocaleString("zh-CN", {
     hour12: false,

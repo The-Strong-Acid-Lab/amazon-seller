@@ -3,11 +3,19 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ImageConceptCard } from "@/components/image-strategy-workbench/image-concept-card";
 import type {
   ImageAsset,
   ImageGenerationRun,
+  ImageModelOption,
   SlotDraftFields,
 } from "@/components/image-strategy-workbench/types";
 import type { ImageStrategySlotPlan } from "@/lib/image-strategy";
@@ -25,10 +33,13 @@ export function StrategySlotCard({
   expandedAssetId,
   keepingAssetId,
   deletingAssetId,
+  modelOptions,
+  selectedModelId,
   onToggleExpand,
   onSave,
   onGenerate,
   onResetPrompt,
+  onModelChange,
   onDraftChange,
   onPromptChange,
   onToggleAssetPrompt,
@@ -47,10 +58,13 @@ export function StrategySlotCard({
   expandedAssetId: string | null;
   keepingAssetId: string | null;
   deletingAssetId: string | null;
+  modelOptions: ImageModelOption[];
+  selectedModelId: string;
   onToggleExpand: () => void;
   onSave: () => void | Promise<void>;
   onGenerate: () => void | Promise<void>;
   onResetPrompt: () => void;
+  onModelChange: (value: string) => void;
   onDraftChange: (field: keyof SlotDraftFields, value: string) => void;
   onPromptChange: (value: string) => void;
   onToggleAssetPrompt: (assetId: string) => void;
@@ -96,6 +110,21 @@ export function StrategySlotCard({
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
+          <Select
+            onValueChange={onModelChange}
+            value={selectedModelId}
+          >
+            <SelectTrigger className="h-9 min-w-[10.5rem] rounded-md border-stone-300 bg-white px-4 text-sm text-stone-900 focus-visible:border-stone-400 focus-visible:ring-0">
+              <SelectValue placeholder="选择模型" />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {modelOptions.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             className="rounded-full"
             onClick={onToggleExpand}

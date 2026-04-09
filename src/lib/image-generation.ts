@@ -1,7 +1,16 @@
 import { createHash } from "node:crypto";
 
+import {
+  createPartFromBase64,
+  GoogleGenAI,
+  Modality,
+} from "@google/genai";
 import OpenAI, { toFile } from "openai";
 
+import {
+  getConfiguredImageModelName,
+  getImageGenerationProvider,
+} from "@/lib/image-generation-provider";
 import { reviewGeneratedImageIdentity } from "@/lib/image-identity-review";
 import { localizeImagePromptToEnglish } from "@/lib/image-prompt-localization";
 import {
@@ -20,6 +29,8 @@ export type ImageGenerationPayload = {
   visualDirection?: string;
   complianceNotes?: string;
   promptOverride?: string;
+  imageProvider?: "openai" | "gemini";
+  imageModel?: string;
 };
 
 function requireEnv(name: string) {
@@ -157,6 +168,79 @@ async function urlToUploadableFile(imageUrl: string, fileName: string) {
   return toFile(Buffer.from(arrayBuffer), fileName, {
     type: contentType,
   });
+}
+
+async function urlToInlineImageData(imageUrl: string) {
+  const response = await fetch(imageUrl);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch reference image.");
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const contentType = response.headers.get("content-type") || "image/png";
+
+  return {
+    mimeType: contentType,
+    data: Buffer.from(arrayBuffer).toString("base64"),
+  };
+}
+
+async function generateImageWithGemini({
+  modelName,
+  prompt,
+  referenceImages,
+}: {
+  modelName: string;
+  prompt: string;
+  referenceImages: Array<{ imageUrl: string }>;
+}) {
+  const apiKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_GENAI_API_KEY ||
+    process.env.GOOGLE_API_KEY;
+
+  if (!apiKey) {
+    throw new Error(
+      "Missing GEMINI_API_KEY (or GOOGLE_GENAI_API_KEY) for Gemini image generation.",
+    );
+  }
+
+  const imageParts = await Promise.all(
+    referenceImages.map(async (image) => {
+      const inlineData = await urlToInlineImageData(image.imageUrl);
+
+      return createPartFromBase64(inlineData.data, inlineData.mimeType);
+    }),
+  );
+
+  const client = new GoogleGenAI({ apiKey });
+  const response = await client.models.generateContent({
+    model: modelName,
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: prompt }, ...imageParts],
+      },
+    ],
+    config: {
+      responseModalities: [Modality.TEXT, Modality.IMAGE],
+    },
+  });
+
+  const imagePart = response.candidates?.[0]?.content?.parts?.find((part) => {
+    const mimeType = part.inlineData?.mimeType || "";
+
+    return mimeType.startsWith("image/");
+  });
+
+  const base64Image = imagePart?.inlineData?.data || null;
+
+  if (!base64Image) {
+    throw new Error("Gemini did not return an image.");
+  }
+
+  return Buffer.from(base64Image, "base64");
 }
 
 async function updateImageGenerationRun(runId: string, values: Record<string, unknown>) {
@@ -315,7 +399,11 @@ export async function executeImageGenerationForSlot({
   const openai = new OpenAI({
     apiKey: requireEnv("OPENAI_API_KEY"),
   });
-  const modelName = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5";
+  const imageProvider =
+    payload.imageProvider && ["openai", "gemini"].includes(payload.imageProvider)
+      ? payload.imageProvider
+      : getImageGenerationProvider();
+  const modelName = sanitizeText(payload.imageModel) || getConfiguredImageModelName();
   const promptModel = process.env.OPENAI_MODEL || "gpt-5-mini";
   const basePrompts = buildPrompts({
     slot,
@@ -472,22 +560,11 @@ export async function executeImageGenerationForSlot({
 
   const editReferenceImages = selectedReferenceFiles.length > 0 ? selectedReferenceFiles : referenceCandidates.slice(0, 4);
 
-  const referenceFiles = await Promise.all(
-    editReferenceImages.map((image) => urlToUploadableFile(image.imageUrl, image.fileName)),
-  );
-
-  if (referenceFiles.length === 0) {
+  if (editReferenceImages.length === 0) {
     throw new Error("我的商品素材图不可用，请重新上传后再生成方案图。");
   }
-
-  const generation = (await openai.images.edit({
-    model: modelName,
-    image: referenceFiles,
-    input_fidelity: "high",
-    quality: "medium",
-    output_format: "png",
-    size: "1024x1024",
-    prompt: promptOverride
+  const generationPrompt = (
+    promptOverride
       ? [
           promptEn,
           "",
@@ -512,7 +589,7 @@ export async function executeImageGenerationForSlot({
               ? effectiveIdentityProfile.must_not_change.join("; ")
               : ""
           }.`,
-        ].join("\n")
+        ]
       : [
           promptEn,
           "",
@@ -538,11 +615,36 @@ export async function executeImageGenerationForSlot({
               : ""
           }.`,
           "No text, no letters, no logo, no watermark.",
-        ].join("\n"),
-    n: 1,
-  })) as ImageGenerationResponse;
+        ]
+  ).join("\n");
 
-  const imageBuffer = await responseToImageBuffer(generation);
+  const imageBuffer =
+    imageProvider === "gemini"
+      ? await generateImageWithGemini({
+          modelName,
+          prompt: generationPrompt,
+          referenceImages: editReferenceImages,
+        })
+      : await (async () => {
+          const referenceFiles = await Promise.all(
+            editReferenceImages.map((image) =>
+              urlToUploadableFile(image.imageUrl, image.fileName),
+            ),
+          );
+
+          const generation = (await openai.images.edit({
+            model: modelName,
+            image: referenceFiles,
+            input_fidelity: "high",
+            quality: "medium",
+            output_format: "png",
+            size: "1024x1024",
+            prompt: generationPrompt,
+            n: 1,
+          })) as ImageGenerationResponse;
+
+          return responseToImageBuffer(generation);
+        })();
   const bucket = "listing-images";
   const slotKey = toSafePathSegment(slot);
   const imageHash = createHash("sha256").update(imageBuffer).digest("hex").slice(0, 16);

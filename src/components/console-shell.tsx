@@ -20,7 +20,12 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar";
 
-const NAV_ITEMS = [
+const NAV_ITEMS: ReadonlyArray<{
+  label: string;
+  href: string;
+  description: string;
+  disabled?: boolean;
+}> = [
   {
     label: "Projects",
     href: "/console",

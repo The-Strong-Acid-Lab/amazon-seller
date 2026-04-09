@@ -2,6 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import type { AnalysisReportShape } from "@/lib/analysis";
+import {
+  getConfiguredImageModelName,
+  getImageGenerationProvider,
+} from "@/lib/image-generation-provider";
 import { getProjectPageData } from "@/lib/projects";
 import { AnalyzeProjectButton } from "@/components/analyze-project-button";
 import { CompetitorListModal } from "@/components/competitor-list-modal";
@@ -444,6 +448,8 @@ export default async function ProjectPage({
                         id: product.id,
                         name: product.name,
                       }))}
+                      defaultImageModel={getConfiguredImageModelName()}
+                      defaultImageProvider={getImageGenerationProvider()}
                       generationRuns={data.imageGenerationRuns}
                       projectId={data.project.id}
                       referenceImages={data.referenceImages}

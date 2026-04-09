@@ -13,8 +13,12 @@ export const generateImageSlotTask = task({
       goal?: string;
       message?: string;
       supportingProof?: string;
+      recommendedOverlayCopy?: string;
       visualDirection?: string;
+      complianceNotes?: string;
       promptOverride?: string;
+      imageProvider?: "openai" | "gemini";
+      imageModel?: string;
     };
   }) => {
     const supabase = createAdminSupabaseClient();

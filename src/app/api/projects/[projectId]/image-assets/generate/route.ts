@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { tasks } from "@trigger.dev/sdk";
 
+import {
+  getConfiguredImageModelName,
+  getImageGenerationProvider,
+} from "@/lib/image-generation-provider";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import type { generateImageSlotTask } from "@/trigger/generate-image-slot-task";
 
@@ -13,8 +17,12 @@ type GenerateImagePayload = {
   goal?: string;
   message?: string;
   supportingProof?: string;
+  recommendedOverlayCopy?: string;
   visualDirection?: string;
+  complianceNotes?: string;
   promptOverride?: string;
+  imageProvider?: "openai" | "gemini";
+  imageModel?: string;
   force?: boolean;
 };
 
@@ -58,8 +66,15 @@ export async function POST(
     const goal = sanitizeText(body.goal);
     const message = sanitizeText(body.message);
     const supportingProof = sanitizeText(body.supportingProof);
+    const recommendedOverlayCopy = sanitizeText(body.recommendedOverlayCopy);
     const visualDirection = sanitizeText(body.visualDirection);
+    const complianceNotes = sanitizeText(body.complianceNotes);
     const promptOverride = sanitizeText(body.promptOverride);
+    const imageProvider =
+      body.imageProvider === "gemini" || body.imageProvider === "openai"
+        ? body.imageProvider
+        : getImageGenerationProvider();
+    const imageModel = sanitizeText(body.imageModel) || getConfiguredImageModelName();
     const force = Boolean(body.force);
 
     if (!slot) {
@@ -128,7 +143,7 @@ export async function POST(
         status: "queued",
         stage: "queued",
         progress: 0,
-        model_name: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5",
+        model_name: imageModel,
         started_at: null,
         completed_at: null,
         error_message: null,
@@ -165,8 +180,12 @@ export async function POST(
           goal,
           message,
           supportingProof,
+          recommendedOverlayCopy,
           visualDirection,
+          complianceNotes,
           promptOverride,
+          imageProvider,
+          imageModel,
         },
       });
     } catch (triggerError) {
