@@ -13,7 +13,7 @@ export function ImageConceptCard({
   slotTitle,
   keepingAssetId,
   deletingAssetId,
-  expandedAssetId,
+  expandedAssetIds,
   onKeep,
   onDelete,
   onTogglePrompt,
@@ -22,12 +22,12 @@ export function ImageConceptCard({
   slotTitle: string;
   keepingAssetId: string | null;
   deletingAssetId: string | null;
-  expandedAssetId: string | null;
+  expandedAssetIds: Record<string, boolean>;
   onKeep: (asset: ImageAsset) => void | Promise<void>;
   onDelete: (asset: ImageAsset) => void;
   onTogglePrompt: (assetId: string) => void;
 }) {
-  const isPromptExpanded = expandedAssetId === asset.id;
+  const isPromptExpanded = Boolean(expandedAssetIds[asset.id]);
 
   return (
     <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">

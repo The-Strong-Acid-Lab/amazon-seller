@@ -78,7 +78,7 @@ export function ImageBriefWorkbench({
   const [deletingReferenceId, setDeletingReferenceId] = useState<string | null>(null);
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
   const [expandedSlotId, setExpandedSlotId] = useState<string | null>("main_image");
-  const [expandedAssetId, setExpandedAssetId] = useState<string | null>(null);
+  const [expandedAssetIds, setExpandedAssetIds] = useState<Record<string, boolean>>({});
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraftFields>>({});
   const [promptOverrides, setPromptOverrides] = useState<Record<string, string>>({});
@@ -264,8 +264,8 @@ export function ImageBriefWorkbench({
   }
 
   function getPromptOverrideForGeneration(slot: ImageStrategySlotPlan) {
-    const currentPrompt = getPromptValue(slot).trim();
-    const suggestedPrompt = buildSuggestedPrompt(slot).trim();
+    const currentPrompt = getPromptValue(slot);
+    const suggestedPrompt = buildSuggestedPrompt(slot);
 
     if (!currentPrompt || currentPrompt === suggestedPrompt) {
       return undefined;
@@ -729,7 +729,7 @@ export function ImageBriefWorkbench({
               canGenerate={targetReferenceCount > 0}
               deletingAssetId={deletingAssetId}
               draft={getSlotDraft(slot.id, slot)}
-              expandedAssetId={expandedAssetId}
+              expandedAssetIds={expandedAssetIds}
               isExpanded={expandedSlotId === slot.id}
               isGenerating={
                 generatingSlot === slot.id ||
@@ -764,10 +764,9 @@ export function ImageBriefWorkbench({
               }
               onPromptChange={(value) =>
                 setPromptOverrides((current) => {
-                  const suggestedPrompt = buildSuggestedPrompt(slot).trim();
-                  const nextValue = value.trim();
+                  const suggestedPrompt = buildSuggestedPrompt(slot);
 
-                  if (nextValue === suggestedPrompt) {
+                  if (value === suggestedPrompt) {
                     const next = { ...current };
                     delete next[slot.id];
                     return next;
@@ -787,9 +786,18 @@ export function ImageBriefWorkbench({
               }
               onSave={() => handleSaveSlot(slot.id)}
               onToggleAssetPrompt={(assetId) =>
-                setExpandedAssetId((current) =>
-                  current === assetId ? null : assetId,
-                )
+                setExpandedAssetIds((current) => {
+                  if (current[assetId]) {
+                    const next = { ...current };
+                    delete next[assetId];
+                    return next;
+                  }
+
+                  return {
+                    ...current,
+                    [assetId]: true,
+                  };
+                })
               }
               onToggleExpand={() =>
                 setExpandedSlotId((current) =>

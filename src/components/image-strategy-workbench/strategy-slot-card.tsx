@@ -30,7 +30,7 @@ export function StrategySlotCard({
   canGenerate,
   generationRun,
   promptValue,
-  expandedAssetId,
+  expandedAssetIds,
   keepingAssetId,
   deletingAssetId,
   modelOptions,
@@ -55,7 +55,7 @@ export function StrategySlotCard({
   canGenerate: boolean;
   generationRun: ImageGenerationRun | null;
   promptValue: string;
-  expandedAssetId: string | null;
+  expandedAssetIds: Record<string, boolean>;
   keepingAssetId: string | null;
   deletingAssetId: string | null;
   modelOptions: ImageModelOption[];
@@ -287,7 +287,7 @@ export function StrategySlotCard({
             <ImageConceptCard
               asset={asset}
               deletingAssetId={deletingAssetId}
-              expandedAssetId={expandedAssetId}
+              expandedAssetIds={expandedAssetIds}
               keepingAssetId={keepingAssetId}
               key={asset.id}
               onDelete={onDeleteAsset}
