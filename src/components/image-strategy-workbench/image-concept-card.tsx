@@ -28,6 +28,8 @@ export function ImageConceptCard({
   onTogglePrompt: (assetId: string) => void;
 }) {
   const isPromptExpanded = Boolean(expandedAssetIds[asset.id]);
+  const hasConsistencyWarning = asset.error_message?.startsWith("商品一致性提醒");
+  const isHardFailure = asset.status === "failed" && !hasConsistencyWarning;
 
   return (
     <div className="rounded-xl border border-stone-200 bg-stone-50 p-3">
@@ -35,12 +37,19 @@ export function ImageConceptCard({
         <p className="text-xs text-stone-600">
           v{asset.version} · {formatDateTime(asset.created_at)}
         </p>
-        {asset.status === "failed" ? (
+        {isHardFailure ? (
           <Badge
             className="rounded-full border border-rose-200 bg-rose-50 text-rose-700"
             variant="outline"
           >
             一致性未通过
+          </Badge>
+        ) : hasConsistencyWarning ? (
+          <Badge
+            className="rounded-full border border-amber-200 bg-amber-50 text-amber-800"
+            variant="outline"
+          >
+            低一致性提醒
           </Badge>
         ) : asset.is_kept ? (
           <Badge className="rounded-full" variant="default">
@@ -71,7 +80,7 @@ export function ImageConceptCard({
       <div className="mt-3 grid gap-2">
         <Button
           className="px-4"
-          disabled={asset.is_kept || keepingAssetId === asset.id || asset.status === "failed"}
+          disabled={asset.is_kept || keepingAssetId === asset.id || isHardFailure}
           onClick={() => void onKeep(asset)}
           size="sm"
           variant="outline"
@@ -97,41 +106,28 @@ export function ImageConceptCard({
         </Button>
         <p className="text-xs text-stone-600">模型: {asset.model_name}</p>
         {asset.error_message ? (
-          <p className="text-xs leading-5 text-rose-700">{asset.error_message}</p>
+          <p
+            className={
+              hasConsistencyWarning
+                ? "text-xs leading-5 text-amber-800"
+                : "text-xs leading-5 text-rose-700"
+            }
+          >
+            {asset.error_message}
+          </p>
         ) : null}
       </div>
 
       {isPromptExpanded ? (
         <div className="mt-3 rounded-xl border border-stone-200 bg-white p-3">
-          {asset.prompt_zh && asset.prompt_en && asset.prompt_zh !== asset.prompt_en ? (
-            <div className="grid gap-4">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
-                  原始提示词
-                </p>
-                <pre className="mt-2 whitespace-pre-wrap break-words text-xs leading-6 text-stone-700">
-                  {asset.prompt_zh}
-                </pre>
-              </div>
-              <div>
-                <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
-                  实际执行提示词
-                </p>
-                <pre className="mt-2 whitespace-pre-wrap break-words text-xs leading-6 text-stone-700">
-                  {asset.prompt_en}
-                </pre>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
-                已使用提示词
-              </p>
-              <pre className="mt-2 whitespace-pre-wrap break-words text-xs leading-6 text-stone-700">
-                {asset.prompt_en || asset.prompt_zh || "未记录提示词"}
-              </pre>
-            </div>
-          )}
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
+              已使用提示词
+            </p>
+            <pre className="mt-2 whitespace-pre-wrap break-words text-xs leading-6 text-stone-700">
+              {asset.prompt_zh || asset.prompt_en || "未记录提示词"}
+            </pre>
+          </div>
         </div>
       ) : null}
     </div>

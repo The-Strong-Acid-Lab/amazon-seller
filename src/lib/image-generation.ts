@@ -9,6 +9,7 @@ import OpenAI, { toFile } from "openai";
 
 import {
   getConfiguredImageModelName,
+  getConfiguredVisionModelName,
   getImageGenerationProvider,
 } from "@/lib/image-generation-provider";
 import { reviewGeneratedImageIdentity } from "@/lib/image-identity-review";
@@ -33,6 +34,16 @@ export type ImageGenerationPayload = {
   imageModel?: string;
 };
 
+type GenerationMode = "precise" | "concept";
+
+type ReferenceCandidate = {
+  id: string;
+  fileName: string;
+  imageUrl: string;
+  referenceKind: string;
+  pinnedForMain: boolean;
+};
+
 function requireEnv(name: string) {
   const value = process.env[name];
 
@@ -49,6 +60,93 @@ function sanitizeText(value: unknown) {
   }
 
   return value.trim();
+}
+
+function getReferencePriorityForSlot(slot: string, candidate: ReferenceCandidate) {
+  if (candidate.referenceKind === "infographic_ignore") {
+    return -1000;
+  }
+
+  if (candidate.pinnedForMain && slot === "main_image") {
+    return 200;
+  }
+
+  const priorityByKind: Record<string, number> =
+    slot === "main_image"
+      ? {
+          hero_source: 110,
+          structure_lock: 90,
+          material_lock: 70,
+          untyped: 60,
+          lifestyle_ref: 35,
+        }
+      : slot === "material_detail"
+        ? {
+            material_lock: 110,
+            structure_lock: 85,
+            hero_source: 70,
+            untyped: 60,
+            lifestyle_ref: 30,
+          }
+        : slot === "primary_lifestyle" || slot === "secondary_lifestyle"
+          ? {
+              lifestyle_ref: 110,
+              hero_source: 75,
+              structure_lock: 65,
+              untyped: 60,
+              material_lock: 40,
+            }
+          : {
+              structure_lock: 110,
+              hero_source: 85,
+              material_lock: 70,
+              untyped: 60,
+              lifestyle_ref: 35,
+            };
+
+  return priorityByKind[candidate.referenceKind] ?? priorityByKind.untyped ?? 0;
+}
+
+function rankReferenceCandidatesForSlot(slot: string, candidates: ReferenceCandidate[]) {
+  return [...candidates].sort((left, right) => {
+    const priorityDifference =
+      getReferencePriorityForSlot(slot, right) - getReferencePriorityForSlot(slot, left);
+
+    if (priorityDifference !== 0) {
+      return priorityDifference;
+    }
+
+    if (left.pinnedForMain !== right.pinnedForMain) {
+      return left.pinnedForMain ? -1 : 1;
+    }
+
+    return left.fileName.localeCompare(right.fileName);
+  });
+}
+
+function mergeUniqueReferenceCandidates(
+  groups: ReferenceCandidate[][],
+  maxCount: number,
+) {
+  const seen = new Set<string>();
+  const merged: ReferenceCandidate[] = [];
+
+  for (const group of groups) {
+    for (const candidate of group) {
+      if (seen.has(candidate.id)) {
+        continue;
+      }
+
+      seen.add(candidate.id);
+      merged.push(candidate);
+
+      if (merged.length >= maxCount) {
+        return merged;
+      }
+    }
+  }
+
+  return merged;
 }
 
 function toSafePathSegment(value: string) {
@@ -99,8 +197,6 @@ function buildPrompts({
   const promptEn = [
     `Create one Amazon listing image draft for slot "${slot}".`,
     "Style: realistic product photography, clean composition, strong subject focus.",
-    "Identity lock: keep the exact same product identity as the reference image (shape, structure, and color family).",
-    "If textual instructions conflict with the reference image, prioritize the reference product identity.",
     "No text, no letters, no logos, and no watermark.",
     "Goal:",
     goal || "Highlight the key value proposition for this slot.",
@@ -306,14 +402,16 @@ export async function executeImageGenerationForSlot({
       .maybeSingle(),
     supabase
       .from("product_reference_images")
-      .select("id, file_name, image_url")
+      .select("id, file_name, image_url, reference_kind, pinned_for_main")
       .eq("project_id", projectId)
       .eq("role", "target")
       .order("created_at", { ascending: false })
       .limit(12),
     supabase
       .from("product_reference_images")
-      .select("project_product_id, role, file_hash")
+      .select(
+        "project_product_id, role, file_hash, file_name, image_url, reference_kind, pinned_for_main",
+      )
       .eq("project_id", projectId),
     supabase
       .from("product_identity_profiles")
@@ -372,10 +470,6 @@ export async function executeImageGenerationForSlot({
     throw new Error(identityProfileError.message);
   }
 
-  if (!targetReferenceImages || targetReferenceImages.length === 0) {
-    throw new Error("请先上传至少 1 张我的商品图片，再生成方案图。");
-  }
-
   const { data: latestVersionRow, error: latestVersionError } = await supabase
     .from("image_assets")
     .select("version")
@@ -404,6 +498,58 @@ export async function executeImageGenerationForSlot({
       ? payload.imageProvider
       : getImageGenerationProvider();
   const modelName = sanitizeText(payload.imageModel) || getConfiguredImageModelName();
+  const referenceSignature = buildReferenceImageSignature(
+    (allReferenceImages ?? []).filter(
+      (
+        image,
+      ): image is {
+        project_product_id: string;
+        role: string;
+        file_hash: string;
+        reference_kind: string | null;
+        pinned_for_main: boolean | null;
+      } =>
+        typeof image.project_product_id === "string" &&
+        typeof image.role === "string" &&
+        typeof image.file_hash === "string"
+    ),
+  );
+  const usableTargetReferenceImages = (targetReferenceImages ?? []).filter(
+    (
+      image,
+    ): image is {
+      id: string;
+      file_name: string;
+      image_url: string;
+      reference_kind: string | null;
+      pinned_for_main: boolean | null;
+    } =>
+      typeof image.image_url === "string" &&
+      image.image_url.length > 0 &&
+      image.reference_kind !== "infographic_ignore",
+  );
+  const usableCompetitorReferenceImages = (allReferenceImages ?? []).filter(
+    (
+      image,
+    ): image is {
+      project_product_id: string;
+      role: string;
+      file_hash: string;
+      file_name: string;
+      image_url: string;
+      reference_kind: string | null;
+      pinned_for_main: boolean | null;
+    } =>
+      image.role === "competitor" &&
+      typeof image.project_product_id === "string" &&
+      typeof image.file_hash === "string" &&
+      typeof image.file_name === "string" &&
+      typeof image.image_url === "string" &&
+      image.image_url.length > 0 &&
+      image.reference_kind !== "infographic_ignore",
+  );
+  const generationMode: GenerationMode =
+    usableTargetReferenceImages.length > 0 ? "precise" : "concept";
   const promptModel = process.env.OPENAI_MODEL || "gpt-5-mini";
   const basePrompts = buildPrompts({
     slot,
@@ -430,7 +576,9 @@ export async function executeImageGenerationForSlot({
             "用户补充要求：",
             localizedOverride.promptZh,
             "",
-            "执行规则：如果用户补充要求与商品真实结构、商品身份或平台合规限制冲突，优先保持真实商品和合规要求。",
+            generationMode === "precise"
+              ? "执行规则：如果用户补充要求与商品真实结构、商品身份或平台合规限制冲突，优先保持真实商品和合规要求。"
+              : "执行规则：如果用户补充要求与基础商品类别、平台合规限制或概念模式约束冲突，优先保持概念方向和合规要求。",
           ].join("\n"),
           promptEn: [
             basePrompts.promptEn,
@@ -438,27 +586,37 @@ export async function executeImageGenerationForSlot({
             "User refinements:",
             localizedOverride.promptEn,
             "",
-            "Execution rule: apply the user refinements only when they do not conflict with the real product identity, structural relationships, or compliance constraints.",
+            generationMode === "precise"
+              ? "Execution rule: apply the user refinements only when they do not conflict with the real product identity, structural relationships, or compliance constraints."
+              : "Execution rule: apply the user refinements only when they do not conflict with the broad product category, concept-mode constraints, or compliance requirements.",
           ].join("\n"),
         };
       })()
     : basePrompts;
-  const referenceSignature = buildReferenceImageSignature(
-    (allReferenceImages ?? []).filter(
-      (
-        image,
-      ): image is { project_product_id: string; role: string; file_hash: string } =>
-        typeof image.project_product_id === "string" &&
-        typeof image.role === "string" &&
-        typeof image.file_hash === "string",
-    ),
-  );
+
+  if (
+    generationMode === "precise" &&
+    usableTargetReferenceImages.length === 0
+  ) {
+    throw new Error(
+      "我的商品参考图当前都被标记为忽略或不可用，请至少保留 1 张可用于锁定商品身份的图片。",
+    );
+  }
+
+  if (
+    generationMode === "concept" &&
+    usableCompetitorReferenceImages.length === 0
+  ) {
+    throw new Error("请至少上传 1 张我的商品图或竞品参考图，再生成方案图。");
+  }
+
   let effectiveIdentityProfile = identityProfile;
 
   if (
-    !effectiveIdentityProfile ||
-    effectiveIdentityProfile.status !== "confirmed" ||
-    effectiveIdentityProfile.reference_signature !== referenceSignature
+    generationMode === "precise" &&
+    (!effectiveIdentityProfile ||
+      effectiveIdentityProfile.status !== "confirmed" ||
+      effectiveIdentityProfile.reference_signature !== referenceSignature)
   ) {
     if (!targetProduct) {
       throw new Error("当前项目没有我的商品。");
@@ -471,13 +629,9 @@ export async function executeImageGenerationForSlot({
 
     const generatedIdentityProfile = await generateProductIdentityProfile({
       client: openai,
-      model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini",
+      model: getConfiguredVisionModelName(),
       targetName: targetProduct.name ?? "未命名我的商品",
-      referenceImages: targetReferenceImages
-        .filter((image): image is { id: string; file_name: string; image_url: string } =>
-          typeof image.image_url === "string" && image.image_url.length > 0,
-        )
-        .map((image) => ({
+      referenceImages: usableTargetReferenceImages.map((image) => ({
           fileName: image.file_name,
           imageUrl: image.image_url,
         })),
@@ -491,7 +645,7 @@ export async function executeImageGenerationForSlot({
           project_product_id: targetProduct.id,
           status: "confirmed",
           reference_signature: referenceSignature,
-          source_image_count: targetReferenceImages.length,
+          source_image_count: usableTargetReferenceImages.length,
           product_type: generatedIdentityProfile.product_type,
           category: generatedIdentityProfile.category,
           primary_color: generatedIdentityProfile.primary_color,
@@ -529,42 +683,103 @@ export async function executeImageGenerationForSlot({
     progress: 55,
   });
 
-  const referenceCandidates = targetReferenceImages
-    .filter((image): image is { id: string; file_name: string; image_url: string } =>
-      typeof image.image_url === "string" && image.image_url.length > 0,
-    )
-    .map((image) => ({
-      id: image.id,
-      fileName: image.file_name,
-      imageUrl: image.image_url,
-    }));
+  const referenceCandidates = (
+    generationMode === "precise"
+      ? usableTargetReferenceImages.map((image) => ({
+          id: image.id,
+          fileName: image.file_name,
+          imageUrl: image.image_url,
+          referenceKind: image.reference_kind || "untyped",
+          pinnedForMain: image.pinned_for_main === true,
+        }))
+      : usableCompetitorReferenceImages.map((image) => ({
+          id: `${image.project_product_id}:${image.file_hash}`,
+          fileName: image.file_name,
+          imageUrl: image.image_url,
+          referenceKind: image.reference_kind || "competitor_inspiration",
+          pinnedForMain: false,
+        }))
+  ).map((image) => ({
+    id: image.id,
+    fileName: image.fileName,
+    imageUrl: image.imageUrl,
+    referenceKind: image.referenceKind,
+    pinnedForMain: image.pinnedForMain,
+  }));
+
+  const rankedReferenceCandidates = rankReferenceCandidatesForSlot(slot, referenceCandidates);
 
   const selectedReferences = await selectReferenceImagesForEdit({
     client: openai,
-    model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini",
+    model: getConfiguredVisionModelName(),
     slotTitle: slot,
     goal,
     message,
     identitySummary:
-      effectiveIdentityProfile.identity_summary ||
-      effectiveIdentityProfile.product_type ||
-      effectiveIdentityProfile.category ||
-      "",
-    referenceImages: referenceCandidates,
+      generationMode === "precise"
+        ? effectiveIdentityProfile?.identity_summary ||
+          effectiveIdentityProfile?.product_type ||
+          effectiveIdentityProfile?.category ||
+          ""
+        : `Concept mode. Use references for composition and merchandising direction only. Product context: ${targetProduct?.name || "unknown product"}.`,
+    referenceImages: rankedReferenceCandidates.map((image) => ({
+      fileName: image.fileName,
+      imageUrl: image.imageUrl,
+      referenceKind: image.referenceKind,
+      pinnedForMain: image.pinnedForMain,
+    })),
     maxSelected: 5,
   });
 
-  const selectedReferenceFiles = referenceCandidates.filter((image) =>
+  const selectedReferenceFiles = rankedReferenceCandidates.filter((image) =>
     selectedReferences.selected_file_names.includes(image.fileName),
   );
 
-  const editReferenceImages = selectedReferenceFiles.length > 0 ? selectedReferenceFiles : referenceCandidates.slice(0, 4);
+  const pinnedMainReferences =
+    slot === "main_image"
+      ? rankedReferenceCandidates.filter((image) => image.pinnedForMain)
+      : [];
+  const editReferenceImages = mergeUniqueReferenceCandidates(
+    [
+      pinnedMainReferences,
+      selectedReferenceFiles,
+      rankedReferenceCandidates,
+    ],
+    5,
+  );
 
   if (editReferenceImages.length === 0) {
-    throw new Error("我的商品素材图不可用，请重新上传后再生成方案图。");
+    throw new Error(
+      generationMode === "precise"
+        ? "我的商品素材图不可用，请重新上传后再生成方案图。"
+        : "竞品参考图不可用，请重新上传后再生成方案图。",
+    );
   }
+  const variationInstructions =
+    version > 1
+      ? [
+          "Variation instructions:",
+          "This is a regeneration for the same slot.",
+          "Make the background treatment and overall composition materially different from earlier versions.",
+          "Avoid repeating the same environment, camera framing, furniture layout, props, or backdrop styling.",
+          "Keep the slot goal and any user refinements, but change the scene execution enough to feel like a distinct option.",
+        ]
+      : [];
   const generationPrompt = (
-    promptOverride
+    generationMode === "concept"
+      ? [
+          promptEn,
+          "",
+          "Concept mode instructions:",
+          "No verified first-party product photos were provided for identity lock.",
+          "Use the uploaded reference images only as inspiration for composition, merchandising hierarchy, visual style, and scene direction.",
+          "Do not replicate a specific branded product or imply an exact verified product identity.",
+          "Create a concept draft for the same broad product category, optimized for the slot goal.",
+          `Product context: ${targetProduct?.name || "unknown product"}.`,
+          ...variationInstructions,
+          "No text, no letters, no logo, no watermark.",
+        ]
+      : promptOverride
       ? [
           promptEn,
           "",
@@ -580,15 +795,16 @@ export async function executeImageGenerationForSlot({
           "Keep integrated components integrated when they are integrated in the reference product.",
           "Do not merge distinct product parts into one shape.",
           "Do not split connected product parts into separate objects.",
-          `Product type: ${effectiveIdentityProfile.product_type || effectiveIdentityProfile.category || "unknown"}.`,
-          `Primary color / material: ${effectiveIdentityProfile.primary_color || "unknown"}.`,
-          `Identity summary: ${effectiveIdentityProfile.identity_summary || "Keep the same product identity."}`,
-          `Must keep: ${Array.isArray(effectiveIdentityProfile.must_keep) ? effectiveIdentityProfile.must_keep.join("; ") : ""}.`,
+          `Product type: ${effectiveIdentityProfile?.product_type || effectiveIdentityProfile?.category || "unknown"}.`,
+          `Primary color / material: ${effectiveIdentityProfile?.primary_color || "unknown"}.`,
+          `Identity summary: ${effectiveIdentityProfile?.identity_summary || "Keep the same product identity."}`,
+          `Must keep: ${Array.isArray(effectiveIdentityProfile?.must_keep) ? effectiveIdentityProfile?.must_keep.join("; ") : ""}.`,
           `Must not change: ${
-            Array.isArray(effectiveIdentityProfile.must_not_change)
-              ? effectiveIdentityProfile.must_not_change.join("; ")
+            Array.isArray(effectiveIdentityProfile?.must_not_change)
+              ? effectiveIdentityProfile?.must_not_change.join("; ")
               : ""
           }.`,
+          ...variationInstructions,
         ]
       : [
           promptEn,
@@ -605,15 +821,16 @@ export async function executeImageGenerationForSlot({
           "Keep integrated components integrated when they are integrated in the reference product.",
           "Do not merge distinct product parts into one shape.",
           "Do not split connected product parts into separate objects.",
-          `Product type: ${effectiveIdentityProfile.product_type || effectiveIdentityProfile.category || "unknown"}.`,
-          `Primary color / material: ${effectiveIdentityProfile.primary_color || "unknown"}.`,
-          `Identity summary: ${effectiveIdentityProfile.identity_summary || "Keep the same product identity."}`,
-          `Must keep: ${Array.isArray(effectiveIdentityProfile.must_keep) ? effectiveIdentityProfile.must_keep.join("; ") : ""}.`,
+          `Product type: ${effectiveIdentityProfile?.product_type || effectiveIdentityProfile?.category || "unknown"}.`,
+          `Primary color / material: ${effectiveIdentityProfile?.primary_color || "unknown"}.`,
+          `Identity summary: ${effectiveIdentityProfile?.identity_summary || "Keep the same product identity."}`,
+          `Must keep: ${Array.isArray(effectiveIdentityProfile?.must_keep) ? effectiveIdentityProfile?.must_keep.join("; ") : ""}.`,
           `Must not change: ${
-            Array.isArray(effectiveIdentityProfile.must_not_change)
-              ? effectiveIdentityProfile.must_not_change.join("; ")
+            Array.isArray(effectiveIdentityProfile?.must_not_change)
+              ? effectiveIdentityProfile?.must_not_change.join("; ")
               : ""
           }.`,
+          ...variationInstructions,
           "No text, no letters, no logo, no watermark.",
         ]
   ).join("\n");
@@ -664,31 +881,30 @@ export async function executeImageGenerationForSlot({
   const publicUrl = supabase.storage.from(bucket).getPublicUrl(storagePath).data.publicUrl;
 
   await updateImageGenerationRun(runId, {
-    stage: "reviewing_identity",
+    stage: generationMode === "precise" ? "reviewing_identity" : "generating_image",
     progress: 80,
   });
 
-  const reviewModel = process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini";
-  const identityReview = await reviewGeneratedImageIdentity({
-    client: openai,
-    model: reviewModel,
-    slotTitle: slot,
-    goal,
-    generatedImageUrl: publicUrl,
-    referenceImages: targetReferenceImages
-      .filter((image): image is { id: string; file_name: string; image_url: string } =>
-        typeof image.image_url === "string" && image.image_url.length > 0,
-      )
-      .map((image) => ({
-        fileName: image.file_name,
-        imageUrl: image.image_url,
-      })),
-  });
-  const validationError = identityReview.passes
-    ? null
-    : `商品一致性校验未通过（${identityReview.score}/100）：${
-        identityReview.critical_mismatch || identityReview.summary
-      }`;
+  const identityReview =
+    generationMode === "precise"
+      ? await reviewGeneratedImageIdentity({
+          client: openai,
+          model: getConfiguredVisionModelName(),
+          slotTitle: slot,
+          goal,
+          generatedImageUrl: publicUrl,
+          referenceImages: usableTargetReferenceImages.map((image) => ({
+            fileName: image.file_name,
+            imageUrl: image.image_url,
+          })),
+        })
+      : null;
+  const validationError =
+    generationMode === "precise" && identityReview && !identityReview.passes
+      ? `商品一致性提醒（${identityReview.score}/100）：${
+          identityReview.critical_mismatch || identityReview.summary
+        }`
+      : null;
 
   const { data: insertedAsset, error: insertError } = await supabase
     .from("image_assets")
@@ -703,7 +919,7 @@ export async function executeImageGenerationForSlot({
       prompt_zh: promptZh,
       prompt_en: promptEn,
       model_name: modelName,
-      status: identityReview.passes ? "generated" : "failed",
+      status: "generated",
       storage_bucket: bucket,
       storage_path: storagePath,
       image_url: publicUrl,
@@ -727,17 +943,13 @@ export async function executeImageGenerationForSlot({
   }
 
   await updateImageGenerationRun(runId, {
-    status: identityReview.passes ? "completed" : "failed",
-    stage: identityReview.passes ? "completed" : "failed",
-    progress: identityReview.passes ? 100 : 100,
+    status: "completed",
+    stage: "completed",
+    progress: 100,
     completed_at: new Date().toISOString(),
     error_message: validationError,
     image_asset_id: insertedAsset.id,
   });
-
-  if (!identityReview.passes) {
-    throw new Error(validationError ?? "商品一致性校验未通过。");
-  }
 
   return {
     asset: insertedAsset,

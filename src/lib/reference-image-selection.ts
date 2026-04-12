@@ -3,6 +3,8 @@ import OpenAI from "openai";
 type ReferenceImageInput = {
   fileName: string;
   imageUrl: string;
+  referenceKind?: string;
+  pinnedForMain?: boolean;
 };
 
 export type SelectedReferenceImage = {
@@ -176,7 +178,11 @@ export async function selectReferenceImagesForEdit({
           ...referenceImages.flatMap((image, index) => [
             {
               type: "text" as const,
-              text: `参考图 ${index + 1}：${image.fileName}`,
+              text: [
+                `参考图 ${index + 1}：${image.fileName}`,
+                `人工标签：${image.referenceKind || "untyped"}`,
+                image.pinnedForMain ? "主图锁定：是" : "主图锁定：否",
+              ].join("\n"),
             },
             {
               type: "image_url" as const,

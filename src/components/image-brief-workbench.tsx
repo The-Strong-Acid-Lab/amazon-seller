@@ -75,6 +75,7 @@ export function ImageBriefWorkbench({
   const [savingSlotId, setSavingSlotId] = useState<string | null>(null);
   const [uploadingProductId, setUploadingProductId] = useState<string | null>(null);
   const [uploadingFileCount, setUploadingFileCount] = useState(0);
+  const [updatingReferenceId, setUpdatingReferenceId] = useState<string | null>(null);
   const [deletingReferenceId, setDeletingReferenceId] = useState<string | null>(null);
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
   const [expandedSlotId, setExpandedSlotId] = useState<string | null>("main_image");
@@ -195,6 +196,18 @@ export function ImageBriefWorkbench({
       }, 0),
     [competitorProducts, referenceImagesByProduct],
   );
+
+  const generationMode = useMemo(() => {
+    if (targetReferenceCount > 0) {
+      return "precise";
+    }
+
+    if (competitorReferenceCount > 0) {
+      return "concept";
+    }
+
+    return "disabled";
+  }, [competitorReferenceCount, targetReferenceCount]);
 
   useEffect(() => {
     const supabase = createBrowserSupabaseClient();
@@ -381,29 +394,36 @@ export function ImageBriefWorkbench({
     }
   }
 
-  async function handleReferenceUpload(projectProductId: string, files: FileList | File[] | null) {
-    const nextFiles = files ? Array.from(files) : [];
+  async function handleReferenceUpload(
+    projectProductId: string,
+    filesOrUrl: FileList | File[] | string | null,
+  ) {
+    const imageUrl = typeof filesOrUrl === "string" ? filesOrUrl.trim() : "";
+    const nextFiles =
+      !imageUrl && filesOrUrl ? Array.from(filesOrUrl as FileList | File[]) : [];
 
-    if (nextFiles.length === 0) {
+    if (!imageUrl && nextFiles.length === 0) {
       return;
     }
 
     setUploadingProductId(projectProductId);
-    setUploadingFileCount(nextFiles.length);
+    setUploadingFileCount(imageUrl ? 1 : nextFiles.length);
     setError(null);
     setMessage(null);
 
     try {
       let deduplicatedCount = 0;
 
-      for (const file of nextFiles) {
-        const formData = new FormData();
-        formData.append("projectProductId", projectProductId);
-        formData.append("file", file);
-
+      if (imageUrl) {
         const response = await fetch(`/api/projects/${projectId}/reference-images`, {
           method: "POST",
-          body: formData,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            projectProductId,
+            imageUrl,
+          }),
         });
 
         const payload = (await response.json().catch(() => ({}))) as ActionResponse & {
@@ -411,22 +431,51 @@ export function ImageBriefWorkbench({
         };
 
         if (!response.ok) {
-          throw new Error(payload.error ?? `上传失败：${file.name}`);
+          throw new Error(payload.error ?? "URL 导入失败。");
         }
 
         if (payload.deduplicated) {
           deduplicatedCount += 1;
         }
+      } else {
+        for (const file of nextFiles) {
+          const formData = new FormData();
+          formData.append("projectProductId", projectProductId);
+          formData.append("file", file);
+
+          const response = await fetch(`/api/projects/${projectId}/reference-images`, {
+            method: "POST",
+            body: formData,
+          });
+
+          const payload = (await response.json().catch(() => ({}))) as ActionResponse & {
+            deduplicated?: boolean;
+          };
+
+          if (!response.ok) {
+            throw new Error(payload.error ?? `上传失败：${file.name}`);
+          }
+
+          if (payload.deduplicated) {
+            deduplicatedCount += 1;
+          }
+        }
       }
 
       setMessage(
-        deduplicatedCount > 0
-          ? `已处理 ${nextFiles.length} 张图片，其中 ${deduplicatedCount} 张检测为重复素材。`
-          : `已上传 ${nextFiles.length} 张素材图片。`,
+        imageUrl
+          ? deduplicatedCount > 0
+            ? "这张图片 URL 已存在，已按重复素材处理。"
+            : "已通过 URL 导入 1 张素材图片。"
+          : deduplicatedCount > 0
+            ? `已处理 ${nextFiles.length} 张图片，其中 ${deduplicatedCount} 张检测为重复素材。`
+            : `已上传 ${nextFiles.length} 张素材图片。`,
       );
       router.refresh();
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "上传素材图片失败。");
+      setError(
+        uploadError instanceof Error ? uploadError.message : "上传或导入素材图片失败。",
+      );
     } finally {
       setUploadingProductId(null);
       setUploadingFileCount(0);
@@ -455,6 +504,56 @@ export function ImageBriefWorkbench({
       setError(deleteError instanceof Error ? deleteError.message : "删除素材失败。");
     } finally {
       setDeletingReferenceId(null);
+    }
+  }
+
+  async function handleUpdateReferenceMetadata(
+    image: ProductReferenceImage,
+    updates: {
+      referenceKind?: ProductReferenceImage["reference_kind"];
+      pinnedForMain?: boolean;
+    },
+  ) {
+    const hasReferenceKindUpdate =
+      typeof updates.referenceKind === "string" &&
+      updates.referenceKind !== image.reference_kind;
+    const hasPinnedUpdate =
+      typeof updates.pinnedForMain === "boolean" &&
+      updates.pinnedForMain !== image.pinned_for_main;
+
+    if (!hasReferenceKindUpdate && !hasPinnedUpdate) {
+      return;
+    }
+
+    setUpdatingReferenceId(image.id);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const response = await fetch(
+        `/api/projects/${projectId}/reference-images/${image.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(updates),
+        },
+      );
+      const payload = (await response.json().catch(() => ({}))) as ActionResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "更新参考图标签失败。");
+      }
+
+      setMessage("参考图标记已更新。");
+      router.refresh();
+    } catch (updateError) {
+      setError(
+        updateError instanceof Error ? updateError.message : "更新参考图标签失败。",
+      );
+    } finally {
+      setUpdatingReferenceId(null);
     }
   }
 
@@ -496,8 +595,8 @@ export function ImageBriefWorkbench({
       IMAGE_MODEL_OPTIONS.find((option) => option.id === selectedModelId) ??
       IMAGE_MODEL_OPTIONS[0];
 
-    if (targetReferenceCount === 0) {
-      setError("请先上传至少 1 张我的商品图片，再生成方案图。");
+    if (generationMode === "disabled") {
+      setError("请至少上传 1 张我的商品图或竞品参考图，再生成方案图。");
       return;
     }
 
@@ -632,20 +731,6 @@ export function ImageBriefWorkbench({
     setDeleteTarget(null);
   }
 
-  function updateSlotDraft(slot: ImageStrategySlotPlan, field: keyof SlotDraftFields, value: string) {
-    setSlotDrafts((current) => ({
-      ...current,
-      [slot.id]: {
-        ...(current[slot.id] ?? {
-          purpose: slot.purpose,
-          conversionGoal: slot.conversionGoal,
-          recommendedOverlayCopy: slot.recommendedOverlayCopy,
-        }),
-        [field]: value,
-      },
-    }));
-  }
-
   return (
     <Card className="rounded-[2rem]">
       <CardHeader>
@@ -656,11 +741,12 @@ export function ImageBriefWorkbench({
           {targetProduct ? (
             <ReferenceImageSection
               deletingReferenceId={deletingReferenceId}
-              description=""
-              emptyMessage="还没有上传我的商品素材图。生成任何方案图之前必须先上传至少 1 张。"
+              description="上传后系统会自动判断哪些图更适合主图、结构锁定或忽略；你只需要在明显不对时调整。"
+              emptyMessage="还没有上传我的商品素材图。没有我的图时，系统仍可用竞品图先生成概念方向。"
               images={referenceImagesByProduct.get(targetProduct.id) ?? []}
               isUploading={uploadingProductId === targetProduct.id}
               key={targetProduct.id}
+              updatingReferenceId={updatingReferenceId}
               onRequestDelete={(image) =>
                 setDeleteTarget({
                   kind: "reference",
@@ -672,12 +758,14 @@ export function ImageBriefWorkbench({
                   item: image,
                 })
               }
+              onUpdateMetadata={handleUpdateReferenceMetadata}
               onUpload={(files) =>
                 handleReferenceUpload(targetProduct.id, files)
               }
+              showMainImagePin
               title={`我的商品素材库：${targetProduct.name ?? "未命名我的商品"}`}
               uploadingFileCount={uploadingFileCount}
-              uploadLabel=""
+              uploadLabel="支持 PNG、JPG/JPEG、WEBP，也支持直接导入图片 URL"
             />
           ) : (
             <p className="text-sm text-rose-700">
@@ -694,11 +782,12 @@ export function ImageBriefWorkbench({
                 {competitorProducts.map((competitor) => (
                   <ReferenceImageSection
                     deletingReferenceId={deletingReferenceId}
-                    description="同一竞品可上传多张，用来抽构图和表达套路，不需要一一对应。"
+                    description="同一竞品可上传多张，系统会自动把它们当作构图和表达灵感，而不是你的商品真值。"
                     emptyMessage="该竞品还未上传参考图。"
                     images={referenceImagesByProduct.get(competitor.id) ?? []}
                     isUploading={uploadingProductId === competitor.id}
                     key={competitor.id}
+                    updatingReferenceId={updatingReferenceId}
                     onRequestDelete={(image) =>
                       setDeleteTarget({
                         kind: "reference",
@@ -710,12 +799,13 @@ export function ImageBriefWorkbench({
                         item: image,
                       })
                     }
+                    onUpdateMetadata={handleUpdateReferenceMetadata}
                     onUpload={(files) =>
                       handleReferenceUpload(competitor.id, files)
                     }
                     title={`竞品：${competitor.name ?? "未命名竞品"}`}
                     uploadingFileCount={uploadingFileCount}
-                    uploadLabel="支持一次多选多张图片"
+                    uploadLabel="支持 PNG、JPG/JPEG、WEBP，也支持直接导入图片 URL"
                   />
                 ))}
               </div>
@@ -723,10 +813,27 @@ export function ImageBriefWorkbench({
           ) : null}
         </div>
 
+        <Alert>
+          <AlertTitle>
+            {generationMode === "precise"
+              ? "当前为精确模式"
+              : generationMode === "concept"
+                ? "当前为概念模式"
+                : "当前还不能生成"}
+          </AlertTitle>
+          <AlertDescription>
+            {generationMode === "precise"
+              ? "检测到我的商品参考图。系统会优先锁定商品身份、结构和材质，再生成方案图。"
+              : generationMode === "concept"
+                ? "当前没有我的商品参考图，将只把竞品图当作构图和表达灵感，输出概念方向，不承诺商品精准还原。"
+                : "请至少上传 1 张我的商品图或竞品参考图。没有任何参考图时，系统不会发起生成。"}
+          </AlertDescription>
+        </Alert>
+
         <div className="grid gap-4">
           {strategySlots.map((slot) => (
             <StrategySlotCard
-              canGenerate={targetReferenceCount > 0}
+              canGenerate={generationMode !== "disabled"}
               deletingAssetId={deletingAssetId}
               draft={getSlotDraft(slot.id, slot)}
               expandedAssetIds={expandedAssetIds}
@@ -750,9 +857,6 @@ export function ImageBriefWorkbench({
                   confirmLabel: "确认删除",
                   item: asset,
                 })
-              }
-              onDraftChange={(field, value) =>
-                updateSlotDraft(slot, field, value)
               }
               onGenerate={() => handleGenerate(slot.id)}
               onKeepAsset={handleKeep}

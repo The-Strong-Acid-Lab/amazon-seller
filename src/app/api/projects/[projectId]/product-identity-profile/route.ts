@@ -6,6 +6,7 @@ import {
   generateProductIdentityProfile,
   type ProductIdentityProfileShape,
 } from "@/lib/product-identity-profile";
+import { getConfiguredVisionModelName } from "@/lib/image-generation-provider";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 function requireEnv(name: string) {
@@ -65,14 +66,14 @@ export async function POST(
         .maybeSingle(),
       supabase
         .from("product_reference_images")
-        .select("file_name, image_url")
+        .select("file_name, image_url, reference_kind, pinned_for_main")
         .eq("project_id", projectId)
         .eq("role", "target")
         .order("created_at", { ascending: false })
         .limit(8),
       supabase
         .from("product_reference_images")
-        .select("project_product_id, role, file_hash")
+        .select("project_product_id, role, file_hash, reference_kind, pinned_for_main")
         .eq("project_id", projectId),
     ]);
 
@@ -113,13 +114,23 @@ export async function POST(
     }
 
     const usableImages = (referenceImages ?? []).filter(
-      (image): image is { file_name: string; image_url: string } =>
+      (
+        image,
+      ): image is {
+        file_name: string;
+        image_url: string;
+        reference_kind: string | null;
+        pinned_for_main: boolean | null;
+      } =>
         typeof image.image_url === "string" && image.image_url.length > 0,
-    );
+    ).filter((image) => image.reference_kind !== "infographic_ignore");
 
     if (usableImages.length === 0) {
       return NextResponse.json(
-        { error: "请先上传至少 1 张我的商品图片，再识别商品身份。" },
+        {
+          error:
+            "请先上传至少 1 张可用的我的商品图片，再识别商品身份。被标记为“忽略信息图”的图片不会参与识别。",
+        },
         { status: 400 },
       );
     }
@@ -127,7 +138,7 @@ export async function POST(
     const client = new OpenAI({
       apiKey: requireEnv("OPENAI_API_KEY"),
     });
-    const model = process.env.OPENAI_VISION_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini";
+    const model = getConfiguredVisionModelName();
     const profile = await generateProductIdentityProfile({
       client,
       model,
@@ -141,10 +152,16 @@ export async function POST(
       (allReferenceImages ?? []).filter(
         (
           image,
-        ): image is { project_product_id: string; role: string; file_hash: string } =>
+        ): image is {
+          project_product_id: string;
+          role: string;
+          file_hash: string;
+          reference_kind: string | null;
+          pinned_for_main: boolean | null;
+        } =>
           typeof image.project_product_id === "string" &&
           typeof image.role === "string" &&
-          typeof image.file_hash === "string",
+          typeof image.file_hash === "string"
       ),
     );
 

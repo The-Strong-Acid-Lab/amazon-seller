@@ -13,6 +13,7 @@ type DbReviewRow = {
   rating: number | null;
   review_date: string | null;
   country: string | null;
+  helpful_count: number | null;
   image_count: number;
   has_video: boolean;
 };
@@ -230,31 +231,101 @@ function computeDatasetOverview(reviews: DbReviewRow[]) {
   };
 }
 
+function getReviewTimestamp(review: DbReviewRow) {
+  if (!review.review_date) {
+    return 0;
+  }
+
+  const timestamp = new Date(review.review_date).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function getReviewSignalScore(review: DbReviewRow) {
+  const helpfulScore = Math.min(review.helpful_count ?? 0, 50) * 120;
+  const imageScore = review.image_count * 100;
+  const videoScore = review.has_video ? 250 : 0;
+  const bodyScore = review.review_body.length;
+
+  return helpfulScore + imageScore + videoScore + bodyScore;
+}
+
+function compareReviewsBySignal(left: DbReviewRow, right: DbReviewRow) {
+  const scoreDiff = getReviewSignalScore(right) - getReviewSignalScore(left);
+
+  if (scoreDiff !== 0) {
+    return scoreDiff;
+  }
+
+  return getReviewTimestamp(right) - getReviewTimestamp(left);
+}
+
+function takeUniqueReviews(
+  groups: DbReviewRow[][],
+  limit: number,
+) {
+  const seen = new Set<string>();
+  const selected: DbReviewRow[] = [];
+
+  for (const group of groups) {
+    for (const review of group) {
+      if (seen.has(review.id)) {
+        continue;
+      }
+
+      seen.add(review.id);
+      selected.push(review);
+
+      if (selected.length >= limit) {
+        return selected;
+      }
+    }
+  }
+
+  return selected;
+}
+
 function pickRepresentativeReviews(reviews: DbReviewRow[]) {
   const negative = reviews
     .filter((review) => (review.rating ?? 0) <= 2)
-    .sort((left, right) => {
-      const leftScore = left.image_count * 100 + left.review_body.length;
-      const rightScore = right.image_count * 100 + right.review_body.length;
-      return rightScore - leftScore;
-    })
-    .slice(0, 24);
+    .sort(compareReviewsBySignal)
+    .slice(0, 20);
 
   const neutral = reviews
     .filter((review) => review.rating === 3)
-    .sort((left, right) => right.review_body.length - left.review_body.length)
-    .slice(0, 12);
+    .sort(compareReviewsBySignal)
+    .slice(0, 8);
 
   const positive = reviews
     .filter((review) => (review.rating ?? 0) >= 4)
-    .sort((left, right) => {
-      const leftScore = left.image_count * 100 + left.review_body.length;
-      const rightScore = right.image_count * 100 + right.review_body.length;
-      return rightScore - leftScore;
-    })
-    .slice(0, 28);
+    .sort(compareReviewsBySignal)
+    .slice(0, 20);
 
-  return [...negative, ...neutral, ...positive].slice(0, 64);
+  const recent = [...reviews]
+    .sort((left, right) => {
+      const timestampDiff = getReviewTimestamp(right) - getReviewTimestamp(left);
+
+      if (timestampDiff !== 0) {
+        return timestampDiff;
+      }
+
+      return compareReviewsBySignal(left, right);
+    })
+    .slice(0, 16);
+
+  const helpful = reviews
+    .filter((review) => (review.helpful_count ?? 0) > 0)
+    .sort((left, right) => {
+      const helpfulDiff = (right.helpful_count ?? 0) - (left.helpful_count ?? 0);
+
+      if (helpfulDiff !== 0) {
+        return helpfulDiff;
+      }
+
+      return compareReviewsBySignal(left, right);
+    })
+    .slice(0, 16);
+
+  return takeUniqueReviews([negative, positive, recent, helpful, neutral], 72);
 }
 
 function reviewToPromptLine(review: DbReviewRow) {
@@ -266,6 +337,7 @@ function reviewToPromptLine(review: DbReviewRow) {
     `model=${review.model ?? "-"}`,
     `country=${review.country ?? "-"}`,
     `date=${review.review_date ?? "-"}`,
+    `helpful=${review.helpful_count ?? 0}`,
     `title=${review.review_title || "-"}`,
     `body=${excerpt}`,
   ].join(" | ");
@@ -469,10 +541,10 @@ function buildPrompt({
         "Competitor listing inputs:",
         competitorListingBlocks || "No competitor listing inputs provided.",
         "",
-        "Representative target reviews:",
+        "Representative target reviews (balanced across positive, negative, recent, and high-helpful reviews):",
         representativeTargetReviews || "No target reviews provided.",
         "",
-        "Representative competitor reviews:",
+        "Representative competitor reviews (balanced across positive, negative, recent, and high-helpful reviews):",
         representativeCompetitorReviews || "No competitor reviews provided.",
       ].join("\n"),
     },
@@ -530,7 +602,7 @@ function buildCompetitorInsightPrompt({
         "Competitor listing inputs:",
         listingToPromptBlock(competitor),
         "",
-        "Representative competitor reviews:",
+        "Representative competitor reviews (balanced across positive, negative, recent, and high-helpful reviews):",
         representativeReviews || "No competitor reviews provided.",
       ].join("\n"),
     },
@@ -607,10 +679,10 @@ function buildListingDraftPrompt({
         "Competitor listing inputs:",
         competitorListingBlocks || "No competitor listing inputs provided.",
         "",
-        "Representative target reviews:",
+        "Representative target reviews (balanced across positive, negative, recent, and high-helpful reviews):",
         representativeTargetReviews || "No target reviews provided.",
         "",
-        "Representative competitor reviews:",
+        "Representative competitor reviews (balanced across positive, negative, recent, and high-helpful reviews):",
         representativeCompetitorReviews || "No competitor reviews provided.",
       ].join("\n"),
     },
@@ -942,10 +1014,10 @@ export async function generateAnalysisReportForProject(
     });
 
     const { data: reviews, error: reviewsError } = await supabase
-      .from("reviews")
-      .select(
-        "id, project_product_id, asin, model, review_title, review_body, rating, review_date, country, image_count, has_video",
-      )
+        .from("reviews")
+        .select(
+        "id, project_product_id, asin, model, review_title, review_body, rating, review_date, country, helpful_count, image_count, has_video",
+        )
       .eq("project_id", projectId)
       .order("review_date", { ascending: false });
 
@@ -1173,7 +1245,7 @@ export async function generateCompetitorInsightForProduct({
       supabase
         .from("reviews")
         .select(
-          "id, project_product_id, asin, model, review_title, review_body, rating, review_date, country, image_count, has_video",
+          "id, project_product_id, asin, model, review_title, review_body, rating, review_date, country, helpful_count, image_count, has_video",
         )
         .eq("project_id", projectId)
         .eq("project_product_id", productId)
@@ -1229,7 +1301,7 @@ export async function regenerateListingDraftForProject(projectId: string) {
     supabase
       .from("reviews")
       .select(
-        "id, project_product_id, asin, model, review_title, review_body, rating, review_date, country, image_count, has_video",
+        "id, project_product_id, asin, model, review_title, review_body, rating, review_date, country, helpful_count, image_count, has_video",
       )
       .eq("project_id", projectId)
       .order("review_date", { ascending: false }),

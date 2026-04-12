@@ -87,9 +87,9 @@ const SLOT_BLUEPRINTS: SlotBlueprint[] = [
     fallbackConversionGoal: "提升首屏点击与停留，避免被当成普通同类商品。",
     fallbackOverlayCopy: "主图不叠加文案",
     fallbackVisualDirection:
-      "纯白背景，产品完整入镜，结构特征清晰，优先展示最能区分类目的轮廓。",
+      "背景保持简洁干净，产品完整入镜，结构特征清晰，优先展示最能区分类目的轮廓。",
     complianceNotes:
-      "纯白背景，不加营销文案，不加场景，不加对比图，不加虚构配件。",
+      "不加营销文案，不加误导性对比图，不加虚构配件，背景不要喧宾夺主。",
     keywords: ["hero", "main", "primary", "主图"],
     strategySource: {
       key: "hero_image",

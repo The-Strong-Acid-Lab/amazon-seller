@@ -44,3 +44,10 @@ export function getConfiguredImageModelName() {
   return sanitizeEnvValue(process.env.OPENAI_IMAGE_MODEL) || "gpt-image-1.5";
 }
 
+export function getConfiguredVisionModelName() {
+  return (
+    sanitizeEnvValue(process.env.OPENAI_VISION_MODEL) ||
+    sanitizeEnvValue(process.env.OPENAI_MODEL) ||
+    "gpt-4o"
+  );
+}

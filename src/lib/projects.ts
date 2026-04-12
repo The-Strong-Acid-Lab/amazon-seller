@@ -193,7 +193,7 @@ export async function getProjectPageData(projectId: string) {
       supabase
         .from("product_reference_images")
         .select(
-          "id, project_id, project_product_id, role, file_name, file_hash, storage_bucket, storage_path, image_url, mime_type, size_bytes, created_at",
+          "id, project_id, project_product_id, role, file_name, file_hash, storage_bucket, storage_path, image_url, mime_type, size_bytes, reference_kind, pinned_for_main, created_at",
         )
         .eq("project_id", projectId)
         .order("created_at", { ascending: false }),

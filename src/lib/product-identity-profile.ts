@@ -17,6 +17,8 @@ export function buildReferenceImageSignature(
     role: string;
     project_product_id: string;
     file_hash: string;
+    reference_kind?: string | null;
+    pinned_for_main?: boolean | null;
   }>,
 ) {
   return references
@@ -25,6 +27,8 @@ export function buildReferenceImageSignature(
         reference.role.trim(),
         reference.project_product_id.trim(),
         reference.file_hash.trim(),
+        (reference.reference_kind || "untyped").trim(),
+        reference.pinned_for_main ? "pinned" : "unpinned",
       ].join(":"),
     )
     .sort()

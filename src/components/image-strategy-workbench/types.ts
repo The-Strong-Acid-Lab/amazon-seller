@@ -43,12 +43,23 @@ export type ActionResponse = {
   error?: string;
 };
 
+export type ProductReferenceImageKind =
+  | "untyped"
+  | "hero_source"
+  | "structure_lock"
+  | "material_lock"
+  | "lifestyle_ref"
+  | "competitor_inspiration"
+  | "infographic_ignore";
+
 export type ProductReferenceImage = {
   id: string;
   project_product_id: string;
   role: "target" | "competitor";
   file_name: string;
   image_url: string | null;
+  reference_kind: ProductReferenceImageKind;
+  pinned_for_main: boolean;
   created_at: string;
 };
 
