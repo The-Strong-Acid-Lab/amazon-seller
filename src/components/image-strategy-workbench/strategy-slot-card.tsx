@@ -45,6 +45,7 @@ export function StrategySlotCard({
   onSave,
   onGenerate,
   onResetPrompt,
+  onResetAnalysis,
   onModelChange,
   onPromptChange,
   onToggleAssetPrompt,
@@ -69,6 +70,7 @@ export function StrategySlotCard({
   onSave: () => void | Promise<void>;
   onGenerate: () => void | Promise<void>;
   onResetPrompt: () => void;
+  onResetAnalysis: () => void | Promise<void>;
   onModelChange: (value: string) => void;
   onPromptChange: (value: string) => void;
   onToggleAssetPrompt: (assetId: string) => void;
@@ -193,6 +195,13 @@ export function StrategySlotCard({
                     生成指令 Prompt
                   </p>
                   <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={() => void onResetAnalysis()}
+                      size="sm"
+                      variant="outline"
+                    >
+                      重置为最新分析结果
+                    </Button>
                     <Button onClick={onResetPrompt} size="sm" variant="outline">
                       恢复建议提示词
                     </Button>
@@ -216,11 +225,11 @@ export function StrategySlotCard({
                 />
               </div>
 
-              <div className="grid self-start gap-3 rounded-2xl border border-stone-200 bg-white p-4">
+              <div className="flex h-[360px] self-start flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4">
                 <p className="text-sm font-semibold text-stone-900">
                   主图合规要求
                 </p>
-                <div className="grid gap-2 content-start">
+                <div className="grid min-h-0 flex-1 content-start gap-2 overflow-y-auto pr-1">
                   {slot.complianceNotes
                     .split(/[，。]/)
                     .map((item) => item.trim())
@@ -239,7 +248,7 @@ export function StrategySlotCard({
             </div>
 
             <div className="grid self-start content-start gap-4">
-              <div className="flex h-[420px] flex-col gap-2 rounded-2xl border border-stone-200 bg-white p-4">
+              <div className="flex h-[520px] flex-col gap-2 rounded-2xl border border-stone-200 bg-white p-4">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-stone-900">
                     最新生成图片
@@ -312,7 +321,7 @@ export function StrategySlotCard({
               </div>
 
               {olderAssets.length > 0 ? (
-                <div className="grid gap-3 rounded-2xl border border-stone-200 bg-white p-4">
+                <div className="flex h-[360px] flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-semibold text-stone-900">
                       历史版本
@@ -321,7 +330,7 @@ export function StrategySlotCard({
                       {slotAssets.length} 个版本
                     </p>
                   </div>
-                  <div className="grid gap-2">
+                  <div className="grid min-h-0 flex-1 gap-2 overflow-y-auto pr-1">
                     {slotAssets.map((asset, index) => (
                       <div
                         className="flex min-h-[68px] items-center justify-between gap-3 rounded-xl border border-stone-200 px-3 py-2"
@@ -376,7 +385,7 @@ export function StrategySlotCard({
               </AccordionTrigger>
               <AccordionContent className="pt-4">
                 <div className="grid gap-6 lg:grid-cols-3">
-                  <div className="grid gap-3 content-start">
+                  <div className="grid gap-3 rounded-2xl bg-stone-50 p-4 content-start">
                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
                       策略建议
                     </p>
@@ -406,7 +415,7 @@ export function StrategySlotCard({
                     </div>
                   </div>
 
-                  <div className="grid gap-3 content-start">
+                  <div className="grid gap-3 rounded-2xl bg-amber-50/60 p-4 content-start">
                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
                       Reasoning
                     </p>
@@ -428,7 +437,7 @@ export function StrategySlotCard({
                     </div>
                   </div>
 
-                  <div className="grid gap-3 content-start">
+                  <div className="grid gap-3 rounded-2xl bg-emerald-50/60 p-4 content-start">
                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-stone-500">
                       VOC 买家洞察
                     </p>

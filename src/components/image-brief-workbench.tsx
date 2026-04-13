@@ -89,13 +89,17 @@ export function ImageBriefWorkbench({
   const [error, setError] = useState<string | null>(null);
   const defaultImageModelOptionId = `${defaultImageProvider}:${defaultImageModel}`;
 
+  const baseStrategySlots = useMemo(() => {
+    return buildImageStrategySlots({ brief, strategy });
+  }, [brief, strategy]);
+
   const strategySlots = useMemo(() => {
-    const slots = buildImageStrategySlots({ brief, strategy });
+    const slots = baseStrategySlots;
     return mergePersistedImageStrategySlots({
       slots,
       persistedSlots: savedSlots,
     });
-  }, [brief, savedSlots, strategy]);
+  }, [baseStrategySlots, savedSlots]);
 
   useEffect(() => {
     setSlotDrafts((current) => {
@@ -266,6 +270,10 @@ export function ImageBriefWorkbench({
     });
   }
 
+  function getBaseSlot(slotId: string) {
+    return baseStrategySlots.find((slot) => slot.id === slotId) ?? null;
+  }
+
   function isSlotFieldsDirty(slot: ImageStrategySlotPlan) {
     const draft = getSlotDraft(slot.id, slot);
 
@@ -391,6 +399,75 @@ export function ImageBriefWorkbench({
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "保存图片策略失败。");
       return false;
+    }
+  }
+
+  async function resetSlotToLatestAnalysis(slotId: string) {
+    const baseSlot = getBaseSlot(slotId);
+
+    if (!baseSlot) {
+      return;
+    }
+
+    const resetDraft = {
+      purpose: baseSlot.purpose,
+      conversionGoal: baseSlot.conversionGoal,
+      recommendedOverlayCopy: baseSlot.recommendedOverlayCopy,
+    };
+    const resetPrompt = buildEditableImagePrompt(baseSlot);
+
+    setSlotDrafts((current) => ({
+      ...current,
+      [slotId]: resetDraft,
+    }));
+    setPromptOverrides((current) => ({
+      ...current,
+      [slotId]: resetPrompt,
+    }));
+    setSavingSlotId(slotId);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/image-strategy-slots`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          slots: [
+            {
+              slotKey: baseSlot.id,
+              order: baseSlot.order,
+              section: baseSlot.section,
+              title: baseSlot.title,
+              purpose: baseSlot.purpose,
+              conversionGoal: baseSlot.conversionGoal,
+              recommendedOverlayCopy: baseSlot.recommendedOverlayCopy,
+              evidence: baseSlot.evidence,
+              visualDirection: baseSlot.visualDirection,
+              complianceNotes: baseSlot.complianceNotes,
+              promptText: resetPrompt,
+              sourceBriefSlot: baseSlot.sourceBriefSlot,
+            },
+          ],
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as ActionResponse;
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "重置图片策略失败。");
+      }
+
+      setMessage("已重置为最新分析结果。");
+      router.refresh();
+    } catch (caughtError) {
+      const nextError =
+        caughtError instanceof Error ? caughtError.message : "重置图片策略失败。";
+      setError(nextError);
+    } finally {
+      setSavingSlotId(null);
     }
   }
 
@@ -888,6 +965,7 @@ export function ImageBriefWorkbench({
                   [slot.id]: buildSuggestedPrompt(slot),
                 }))
               }
+              onResetAnalysis={() => resetSlotToLatestAnalysis(slot.id)}
               onSave={() => handleSaveSlot(slot.id)}
               onToggleAssetPrompt={(assetId) =>
                 setExpandedAssetIds((current) => {
