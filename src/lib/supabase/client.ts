@@ -1,6 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
+"use client";
 
-let browserClient: ReturnType<typeof createClient> | null = null;
+import { createBrowserClient } from "@supabase/ssr";
+
+let browserClient: ReturnType<typeof createBrowserClient> | null = null;
 
 export function createBrowserSupabaseClient() {
   if (typeof window === "undefined") {
@@ -14,15 +16,15 @@ export function createBrowserSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!url) {
-    throw new Error("Missing required environment variable: NEXT_PUBLIC_SUPABASE_URL");
+  if (!url || !anonKey) {
+    throw new Error(
+      `Supabase browser env is missing. NEXT_PUBLIC_SUPABASE_URL=${Boolean(
+        url,
+      )}, NEXT_PUBLIC_SUPABASE_ANON_KEY=${Boolean(anonKey)}`,
+    );
   }
 
-  if (!anonKey) {
-    throw new Error("Missing required environment variable: NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  }
-
-  browserClient = createClient(url, anonKey);
+  browserClient = createBrowserClient(url, anonKey);
 
   return browserClient;
 }

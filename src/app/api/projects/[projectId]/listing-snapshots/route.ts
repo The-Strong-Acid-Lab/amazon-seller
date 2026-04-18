@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { assertProjectOwnership, ProjectAccessError } from "@/lib/project-access";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 type ListingSnapshotPayload = {
@@ -38,6 +39,7 @@ export async function POST(
 
   try {
     const { projectId } = await context.params;
+    await assertProjectOwnership(projectId);
     const body = (await request.json().catch(() => null)) as ListingSnapshotPayload | null;
 
     if (!body) {
@@ -107,6 +109,10 @@ export async function POST(
       },
     });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "保存快照失败。" },
       { status: 500 },

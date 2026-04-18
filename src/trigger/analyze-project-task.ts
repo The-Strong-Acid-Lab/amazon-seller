@@ -5,12 +5,19 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 export const analyzeProjectTask = task({
   id: "analyze-project",
-  run: async (payload: { projectId: string; runId: string }) => {
+  run: async (payload: {
+    projectId: string;
+    runId: string;
+    provider?: "openai" | "gemini";
+    modelName?: string;
+  }) => {
     const supabase = createAdminSupabaseClient();
 
     try {
       await generateAnalysisReportForProject(payload.projectId, {
         runId: payload.runId,
+        provider: payload.provider,
+        modelName: payload.modelName,
       });
 
       await supabase

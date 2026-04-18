@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 import { ConsoleShell } from "@/components/console-shell";
 import { ImportWorkbench } from "@/components/import-workbench";
@@ -17,7 +18,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
+export function HomeConsole({
+  projects,
+  userEmail,
+  canCreateProject,
+}: {
+  projects: ProjectListItem[];
+  userEmail?: string | null;
+  canCreateProject: boolean;
+}) {
   const analyzedCount = projects.filter(
     (project) => project.latestReportAt,
   ).length;
@@ -44,6 +53,7 @@ export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
       actions={
         <>
           <Button
+            disabled={!canCreateProject}
             onClick={() => setShowCreateProject(true)}
             type="button"
           >
@@ -53,6 +63,7 @@ export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
       }
       description="新建一个商品项目，或继续已有项目。"
       title="Projects"
+      userEmail={userEmail}
     >
       <div className="grid gap-6">
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
@@ -66,14 +77,21 @@ export function HomeConsole({ projects }: { projects: ProjectListItem[] }) {
             </p>
 
             <div className="mt-6 flex flex-wrap gap-3">
-              <Button
-                className="px-5"
-                onClick={() => setShowCreateProject(true)}
-                type="button"
-              >
-                新建项目
-              </Button>
+            <Button
+              className="px-5"
+              disabled={!canCreateProject}
+              onClick={() => setShowCreateProject(true)}
+              type="button"
+            >
+              新建项目
+            </Button>
             </div>
+
+            {!canCreateProject ? (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                先到 <Link className="font-medium underline" href="/console/settings">Settings</Link> 保存你自己的 API Key，之后才能新建项目。
+              </div>
+            ) : null}
 
             <div className="mt-6 grid gap-3 sm:grid-cols-3">
               <ConsoleStat label="总项目数" value={String(projects.length)} />

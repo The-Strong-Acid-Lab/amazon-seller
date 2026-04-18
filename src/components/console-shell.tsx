@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { buildRootUrlInBrowser } from "@/lib/host-routing";
+import { SignOutButton } from "@/components/sign-out-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,9 +47,8 @@ const NAV_ITEMS: ReadonlyArray<{
   },
   {
     label: "Settings",
-    href: "#",
-    description: "后续开放",
-    disabled: true,
+    href: "/console/settings",
+    description: "账户与 API Key",
   },
 ] as const;
 
@@ -56,13 +57,16 @@ export function ConsoleShell({
   title,
   description,
   actions,
+  userEmail,
 }: {
   children: React.ReactNode;
   title: string;
   description?: string;
   actions?: React.ReactNode;
+  userEmail?: string | null;
 }) {
   const pathname = usePathname();
+  const rootUrl = typeof window === "undefined" ? "/" : buildRootUrlInBrowser("/");
 
   return (
     <main className="min-h-screen text-stone-950">
@@ -85,7 +89,7 @@ export function ConsoleShell({
                 className="w-full rounded-xl justify-start px-4"
                 variant="outline"
               >
-                <Link href="/">返回官网占位页</Link>
+                <Link href={rootUrl}>返回官网占位页</Link>
               </Button>
             </SidebarHeader>
 
@@ -126,11 +130,14 @@ export function ConsoleShell({
             <SidebarFooter>
               <div className="rounded-2xl border border-[var(--page-border)] bg-[var(--page-surface-strong)] p-4">
                 <p className="mt-3 text-sm font-medium text-stone-900">
-                  Single User
+                  {userEmail ?? "未登录"}
                 </p>
                 <p className="mt-1 text-sm leading-6 text-[var(--page-muted)]">
-                  后续这里替换成登录用户、套餐、额度和账户入口。
+                  当前支持邮箱登录和个人 API Key 管理。
                 </p>
+                <div className="mt-4">
+                  <SignOutButton />
+                </div>
               </div>
             </SidebarFooter>
           </div>

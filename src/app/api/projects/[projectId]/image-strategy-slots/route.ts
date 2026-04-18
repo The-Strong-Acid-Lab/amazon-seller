@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { assertProjectOwnership, ProjectAccessError } from "@/lib/project-access";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 type ImageStrategySlotPayload = {
@@ -42,6 +43,7 @@ export async function POST(
 
   try {
     const { projectId } = await context.params;
+    await assertProjectOwnership(projectId);
     const body = (await request.json().catch(() => null)) as RequestPayload | null;
     const slots = Array.isArray(body?.slots) ? body.slots : [];
 
@@ -117,6 +119,10 @@ export async function POST(
       slots: data ?? [],
     });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       {
         error:

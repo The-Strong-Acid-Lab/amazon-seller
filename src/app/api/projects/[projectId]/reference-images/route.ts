@@ -3,8 +3,10 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
 import { getConfiguredVisionModelName } from "@/lib/image-generation-provider";
+import { assertProjectOwnership, ProjectAccessError } from "@/lib/project-access";
 import { classifyReferenceImage } from "@/lib/reference-image-classification";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
+import { resolveProjectApiKey } from "@/lib/user-api-keys";
 
 export const runtime = "nodejs";
 
@@ -168,6 +170,7 @@ export async function POST(
 
   try {
     const { projectId } = await context.params;
+    await assertProjectOwnership(projectId);
     const { projectProductId, fileName, mimeType, imageBuffer } =
       await parseReferenceImageInput(request);
 
@@ -241,7 +244,9 @@ export async function POST(
 
     try {
       const openai = new OpenAI({
-        apiKey: requireEnv("OPENAI_API_KEY"),
+        apiKey:
+          (await resolveProjectApiKey(projectId, "openai")) ??
+          requireEnv("OPENAI_API_KEY"),
       });
       const classification = await classifyReferenceImage({
         client: openai,
@@ -300,6 +305,10 @@ export async function POST(
       deduplicated: false,
     });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Failed to upload reference image.",

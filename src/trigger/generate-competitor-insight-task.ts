@@ -7,9 +7,20 @@ const INSIGHT_TYPE = "competitor_overview";
 
 export const generateCompetitorInsightTask = task({
   id: "generate-competitor-insight",
-  run: async (payload: { projectId: string; productId: string; runId: string }) => {
+  run: async (payload: {
+    projectId: string;
+    productId: string;
+    runId: string;
+    provider?: "openai" | "gemini";
+    modelName?: string;
+  }) => {
     const supabase = createAdminSupabaseClient();
-    const modelName = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+    const provider = payload.provider ?? "openai";
+    const modelName =
+      payload.modelName ??
+      (provider === "gemini"
+        ? process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash"
+        : process.env.OPENAI_MODEL || "gpt-4.1-mini");
 
     try {
       await supabase
@@ -36,6 +47,8 @@ export const generateCompetitorInsightTask = task({
       const insight = await generateCompetitorInsightForProduct({
         projectId: payload.projectId,
         productId: payload.productId,
+        provider,
+        modelName,
       });
 
       await supabase

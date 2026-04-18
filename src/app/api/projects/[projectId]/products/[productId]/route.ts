@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { assertProjectOwnership, ProjectAccessError } from "@/lib/project-access";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 export async function PATCH(
@@ -8,6 +9,7 @@ export async function PATCH(
 ) {
   try {
     const { projectId, productId } = await context.params;
+    await assertProjectOwnership(projectId);
     const body = (await request.json()) as {
       name?: string;
       asin?: string;
@@ -55,6 +57,10 @@ export async function PATCH(
 
     return NextResponse.json({ ok: true, productId });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       {
         error:

@@ -1,6 +1,6 @@
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
-export async function getProjectsListData() {
+export async function getProjectsListData(userId: string) {
   const supabase = createAdminSupabaseClient();
 
   const [
@@ -13,6 +13,7 @@ export async function getProjectsListData() {
     supabase
       .from("projects")
       .select("id, name, product_name, target_market, status, created_at")
+      .eq("user_id", userId)
       .order("created_at", { ascending: false }),
     supabase
       .from("project_products")
@@ -119,7 +120,7 @@ export async function getProjectsListData() {
   }));
 }
 
-export async function getProjectPageData(projectId: string) {
+export async function getProjectPageData(projectId: string, userId: string) {
   const supabase = createAdminSupabaseClient();
 
   const [
@@ -139,6 +140,7 @@ export async function getProjectPageData(projectId: string) {
         .from("projects")
         .select("id, name, product_name, target_market, target_asin, status, created_at")
         .eq("id", projectId)
+        .eq("user_id", userId)
         .single(),
       supabase
         .from("reviews")

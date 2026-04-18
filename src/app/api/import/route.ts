@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { getAuthenticatedUser } from "@/lib/supabase/server";
+import { getUserApiKeySettings } from "@/lib/user-api-keys";
 import {
   appendUploadedReviewFileToProject,
   appendImportedReviewsToProject,
@@ -12,6 +14,12 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "请先登录。" }, { status: 401 });
+    }
+
     const formData = await request.formData();
     const file = formData.get("file");
 
@@ -26,6 +34,7 @@ export async function POST(request: Request) {
     const mode = String(formData.get("mode") ?? "preview");
 
     if (mode === "import" || mode === "upload") {
+      const apiKeySettings = await getUserApiKeySettings(user.id);
       const existingProjectId = String(formData.get("existingProjectId") ?? "").trim();
       const targetProductId = String(formData.get("targetProductId") ?? "").trim();
       const projectName = String(formData.get("projectName") ?? "").trim();
@@ -57,6 +66,17 @@ export async function POST(request: Request) {
                 ? "Project name is required before uploading to Supabase."
                 : "Project name is required before importing to Supabase.",
           },
+          { status: 400 },
+        );
+      }
+
+      if (
+        !existingProjectId &&
+        !apiKeySettings.hasOpenAiKey &&
+        !apiKeySettings.hasGeminiKey
+      ) {
+        return NextResponse.json(
+          { error: "请先在 Settings 保存你自己的 API Key，然后再新建项目。" },
           { status: 400 },
         );
       }
@@ -97,6 +117,7 @@ export async function POST(request: Request) {
               fileMimeType: file.type || undefined,
             })
           : await persistUploadedReviewFile({
+              userId: user.id,
               projectName,
               targetProductName,
               targetProductAsin: targetProductAsin || undefined,
@@ -135,6 +156,7 @@ export async function POST(request: Request) {
             reviewSourceMarket: reviewSourceMarket || undefined,
           })
         : await persistImportedReviews(parsed, {
+            userId: user.id,
             projectName,
             targetProductName,
             targetProductAsin: targetProductAsin || undefined,

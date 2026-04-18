@@ -19,6 +19,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
 type CompetitorProduct = {
@@ -66,11 +73,13 @@ export function CompetitorListModal({
   competitors,
   reviews,
   importCountByProduct,
+  availableProviders,
 }: {
   projectId: string;
   competitors: CompetitorProduct[];
   reviews: CompetitorReview[];
   importCountByProduct: Record<string, number>;
+  availableProviders: Array<"openai" | "gemini">;
 }) {
   const [selectedCompetitorId, setSelectedCompetitorId] = useState<string | null>(null);
   const selectedCompetitor = competitors.find((item) => item.id === selectedCompetitorId) ?? null;
@@ -146,6 +155,7 @@ export function CompetitorListModal({
                 <DialogContent className="max-w-[min(96vw,1440px)] p-0">
                   {selectedCompetitor ? (
                     <CompetitorDetailContent
+                      availableProviders={availableProviders}
                       competitor={selectedCompetitor}
                       projectId={projectId}
                       reviews={reviewsByProduct.get(selectedCompetitor.id) ?? []}
@@ -165,11 +175,13 @@ export function CompetitorListModal({
 }
 
 function CompetitorDetailContent({
+  availableProviders,
   projectId,
   competitor,
   reviews,
   importCount,
 }: {
+  availableProviders: Array<"openai" | "gemini">;
   projectId: string;
   competitor: CompetitorProduct;
   reviews: CompetitorReview[];
@@ -182,6 +194,9 @@ function CompetitorDetailContent({
   const [isLoadingCached, setIsLoadingCached] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<"openai" | "gemini">(
+    availableProviders[0] ?? "openai",
+  );
 
   const isAnalyzing =
     isSubmitting || runState?.status === "queued" || runState?.status === "running";
@@ -273,6 +288,12 @@ function CompetitorDetailContent({
         `/api/projects/${projectId}/products/${competitor.id}/analyze`,
         {
           method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            provider: selectedProvider,
+          }),
         },
       );
       const payload = (await response.json()) as {
@@ -291,7 +312,9 @@ function CompetitorDetailContent({
         status: payload.runStatus ?? "queued",
         stage: payload.runStage ?? "queued",
         progress: payload.runProgress ?? 0,
-        model_name: current?.model_name ?? null,
+        model_name:
+          current?.model_name ??
+          (selectedProvider === "gemini" ? "Gemini" : "OpenAI"),
         error_message: null,
         started_at: current?.started_at ?? null,
         completed_at: null,
@@ -341,21 +364,41 @@ function CompetitorDetailContent({
                 <div>
                   <CardTitle>竞品洞察</CardTitle>
                 </div>
-                <Button
-                  disabled={isAnalyzing || isLoadingCached}
-                  onClick={handleAnalyzeCompetitor}
-                  variant="outline"
-                >
-                  {isLoadingCached
-                    ? "正在读取..."
-                    : isAnalyzing
-                      ? runState?.status === "queued"
-                        ? "已加入队列..."
-                        : `正在生成... ${runState?.progress ?? 0}%`
-                      : insight
-                        ? "重新生成洞察"
-                        : "生成竞品洞察"}
-                </Button>
+                <div className="grid gap-3 sm:min-w-[10.5rem]">
+                  <Select
+                    onValueChange={(value: "openai" | "gemini") =>
+                      setSelectedProvider(value)
+                    }
+                    value={selectedProvider}
+                  >
+                    <SelectTrigger className="h-9 rounded-md border-stone-300 bg-white px-3 text-sm text-stone-900 focus-visible:border-stone-400 focus-visible:ring-0">
+                      <SelectValue placeholder="选择分析模型" />
+                    </SelectTrigger>
+                    <SelectContent align="end">
+                      {availableProviders.includes("openai") ? (
+                        <SelectItem value="openai">OpenAI</SelectItem>
+                      ) : null}
+                      {availableProviders.includes("gemini") ? (
+                        <SelectItem value="gemini">Gemini</SelectItem>
+                      ) : null}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    disabled={isAnalyzing || isLoadingCached}
+                    onClick={handleAnalyzeCompetitor}
+                    variant="outline"
+                  >
+                    {isLoadingCached
+                      ? "正在读取..."
+                      : isAnalyzing
+                        ? runState?.status === "queued"
+                          ? "已加入队列..."
+                          : `正在生成... ${runState?.progress ?? 0}%`
+                        : insight
+                          ? "重新生成洞察"
+                          : "生成竞品洞察"}
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="grid gap-6">

@@ -20,6 +20,7 @@ import {
 } from "@/lib/product-identity-profile";
 import { selectReferenceImagesForEdit } from "@/lib/reference-image-selection";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
+import { resolveProjectApiKey } from "@/lib/user-api-keys";
 
 export type ImageGenerationPayload = {
   slot?: string;
@@ -283,15 +284,18 @@ async function urlToInlineImageData(imageUrl: string) {
 }
 
 async function generateImageWithGemini({
+  projectId,
   modelName,
   prompt,
   referenceImages,
 }: {
+  projectId: string;
   modelName: string;
   prompt: string;
   referenceImages: Array<{ imageUrl: string }>;
 }) {
   const apiKey =
+    (await resolveProjectApiKey(projectId, "gemini")) ||
     process.env.GEMINI_API_KEY ||
     process.env.GOOGLE_GENAI_API_KEY ||
     process.env.GOOGLE_API_KEY;
@@ -491,7 +495,9 @@ export async function executeImageGenerationForSlot({
 
   const version = (latestVersionRow?.version ?? 0) + 1;
   const openai = new OpenAI({
-    apiKey: requireEnv("OPENAI_API_KEY"),
+    apiKey:
+      (await resolveProjectApiKey(projectId, "openai")) ??
+      requireEnv("OPENAI_API_KEY"),
   });
   const imageProvider =
     payload.imageProvider && ["openai", "gemini"].includes(payload.imageProvider)
@@ -838,6 +844,7 @@ export async function executeImageGenerationForSlot({
   const imageBuffer =
     imageProvider === "gemini"
       ? await generateImageWithGemini({
+          projectId,
           modelName,
           prompt: generationPrompt,
           referenceImages: editReferenceImages,

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { assertProjectOwnership, ProjectAccessError } from "@/lib/project-access";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 export async function POST(
@@ -10,6 +11,7 @@ export async function POST(
 
   try {
     const { projectId, assetId } = await context.params;
+    await assertProjectOwnership(projectId);
     const { data: asset, error: assetError } = await supabase
       .from("image_assets")
       .select("id, project_id, slot")
@@ -50,6 +52,10 @@ export async function POST(
 
     return NextResponse.json({ asset: updated });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Failed to keep image asset.",

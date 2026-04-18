@@ -1,19 +1,31 @@
 import { NextResponse } from "next/server";
 import { tasks } from "@trigger.dev/sdk";
 
+import { assertProjectOwnership, ProjectAccessError } from "@/lib/project-access";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import type { analyzeProjectTask } from "@/trigger/analyze-project-task";
 
 export const runtime = "nodejs";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ projectId: string }> },
 ) {
   const supabase = createAdminSupabaseClient();
 
   try {
     const { projectId } = await context.params;
+    await assertProjectOwnership(projectId);
+    const body = (await request.json().catch(() => ({}))) as {
+      provider?: "openai" | "gemini";
+      modelName?: string;
+    };
+    const provider = body.provider === "gemini" ? "gemini" : "openai";
+    const modelName =
+      body.modelName?.trim() ||
+      (provider === "gemini"
+        ? process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash"
+        : process.env.OPENAI_MODEL || "gpt-4.1-mini");
 
     const { data: activeRun, error: activeRunError } = await supabase
       .from("analysis_runs")
@@ -54,7 +66,7 @@ export async function POST(
         status: "queued",
         progress: 0,
         stage: "queued",
-        model_name: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+        model_name: modelName,
         started_at: null,
         completed_at: null,
         error_message: null,
@@ -87,6 +99,8 @@ export async function POST(
       await tasks.trigger<typeof analyzeProjectTask>("analyze-project", {
         projectId,
         runId: run.id,
+        provider,
+        modelName,
       });
     } catch (triggerError) {
       await supabase
@@ -120,6 +134,10 @@ export async function POST(
       deduplicated: false,
     });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     const message =
       error instanceof Error ? error.message : "Failed to analyze project.";
 

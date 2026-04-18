@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { assertProjectOwnership, ProjectAccessError } from "@/lib/project-access";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 export async function DELETE(
@@ -10,6 +11,7 @@ export async function DELETE(
 
   try {
     const { projectId, assetId } = await context.params;
+    await assertProjectOwnership(projectId);
 
     const { data: assetRecord, error: assetError } = await supabase
       .from("image_assets")
@@ -47,6 +49,10 @@ export async function DELETE(
 
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Failed to delete image asset.",

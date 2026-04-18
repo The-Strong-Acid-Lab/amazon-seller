@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { assertProjectOwnership, ProjectAccessError } from "@/lib/project-access";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 const ALLOWED_REFERENCE_KINDS = new Set([
@@ -20,6 +21,7 @@ export async function PATCH(
 
   try {
     const { projectId, imageId } = await context.params;
+    await assertProjectOwnership(projectId);
     const body = (await request.json().catch(() => null)) as
       | { referenceKind?: string; pinnedForMain?: boolean }
       | null;
@@ -115,6 +117,10 @@ export async function PATCH(
 
     return NextResponse.json({ image: updatedImage });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Failed to update reference image.",
@@ -132,6 +138,7 @@ export async function DELETE(
 
   try {
     const { projectId, imageId } = await context.params;
+    await assertProjectOwnership(projectId);
 
     const { data: imageRecord, error: imageError } = await supabase
       .from("product_reference_images")
@@ -177,6 +184,10 @@ export async function DELETE(
 
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Failed to delete reference image.",

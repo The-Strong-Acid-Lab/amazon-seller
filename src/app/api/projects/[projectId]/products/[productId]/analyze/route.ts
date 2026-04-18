@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { tasks } from "@trigger.dev/sdk";
 
+import type { AnalysisProvider } from "@/lib/analysis";
+import { assertProjectOwnership, ProjectAccessError } from "@/lib/project-access";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import type { generateCompetitorInsightTask } from "@/trigger/generate-competitor-insight-task";
 
@@ -13,6 +15,7 @@ export async function GET(
 ) {
   try {
     const { projectId, productId } = await params;
+    await assertProjectOwnership(projectId);
     const supabase = createAdminSupabaseClient();
 
     const [
@@ -52,6 +55,10 @@ export async function GET(
       run: latestRun ?? null,
     });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       {
         error:
@@ -63,13 +70,23 @@ export async function GET(
 }
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ projectId: string; productId: string }> },
 ) {
   const supabase = createAdminSupabaseClient();
 
   try {
     const { projectId, productId } = await params;
+    await assertProjectOwnership(projectId);
+    const requestBody = (await request.json().catch(() => ({}))) as {
+      provider?: AnalysisProvider;
+    };
+    const provider: AnalysisProvider =
+      requestBody.provider === "gemini" ? "gemini" : "openai";
+    const modelName =
+      provider === "gemini"
+        ? process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash"
+        : process.env.OPENAI_MODEL || "gpt-4.1-mini";
 
     const { data: activeRun, error: activeRunError } = await supabase
       .from("competitor_insight_runs")
@@ -114,7 +131,7 @@ export async function POST(
         status: "queued",
         stage: "queued",
         progress: 0,
-        model_name: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+        model_name: modelName,
         started_at: null,
         completed_at: null,
         error_message: null,
@@ -139,6 +156,8 @@ export async function POST(
           projectId,
           productId,
           runId: run.id,
+          provider,
+          modelName,
         },
       );
     } catch (triggerError) {
@@ -167,6 +186,10 @@ export async function POST(
       deduplicated: false,
     });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       {
         error:

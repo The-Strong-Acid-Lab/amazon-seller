@@ -1,7 +1,9 @@
+import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 
 import { normalizePendingUploadedReviewsForProject } from "@/lib/import-persistence";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
+import { resolveProjectApiKey } from "@/lib/user-api-keys";
 
 type DbReviewRow = {
   id: string;
@@ -34,6 +36,8 @@ type OpenAiMessage = {
   role: "system" | "user";
   content: string;
 };
+
+export type AnalysisProvider = "openai" | "gemini";
 
 export type ThemeItem = {
   theme: string;
@@ -691,20 +695,58 @@ function buildListingDraftPrompt({
   return messages;
 }
 
-async function callOpenAi<T>(messages: OpenAiMessage[]) {
-  const apiKey = requireOpenAiEnv("OPENAI_API_KEY");
-  const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
-  const client = new OpenAI({
-    apiKey,
-  });
+async function callLlm<T>({
+  messages,
+  projectId,
+  provider = "openai",
+  model,
+}: {
+  messages: OpenAiMessage[];
+  projectId?: string;
+  provider?: AnalysisProvider;
+  model?: string;
+}) {
+  if (provider === "gemini") {
+    const apiKey =
+      (projectId ? await resolveProjectApiKey(projectId, "gemini") : null) ??
+      process.env.GEMINI_API_KEY ??
+      process.env.GOOGLE_GENAI_API_KEY ??
+      process.env.GOOGLE_API_KEY;
 
+    if (!apiKey) {
+      throw new Error("Missing Gemini API key.");
+    }
+
+    const client = new GoogleGenAI({ apiKey });
+    const response = await client.models.generateContent({
+      model: model || process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash",
+      contents: messages
+        .map((message) => `${message.role.toUpperCase()}:\n${message.content}`)
+        .join("\n\n"),
+      config: {
+        responseMimeType: "application/json",
+        temperature: 0.3,
+      },
+    });
+    const content = response.text;
+
+    if (!content) {
+      throw new Error("Gemini response did not include any content");
+    }
+
+    return JSON.parse(content) as T;
+  }
+
+  const apiKey =
+    (projectId ? await resolveProjectApiKey(projectId, "openai") : null) ??
+    requireOpenAiEnv("OPENAI_API_KEY");
+  const client = new OpenAI({ apiKey });
   const completion = await client.chat.completions.create({
-    model,
+    model: model || process.env.OPENAI_MODEL || "gpt-4.1-mini",
     response_format: { type: "json_object" },
     messages,
     temperature: 0.3,
   });
-
   const content = completion.choices[0]?.message?.content;
 
   if (!content) {
@@ -934,10 +976,17 @@ export async function generateAnalysisReportForProject(
   projectId: string,
   options?: {
     runId?: string;
+    provider?: AnalysisProvider;
+    modelName?: string;
   },
 ) {
   const supabase = createAdminSupabaseClient();
-  const modelName = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+  const provider = options?.provider || "openai";
+  const modelName =
+    options?.modelName ||
+    (provider === "gemini"
+      ? process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash"
+      : process.env.OPENAI_MODEL || "gpt-4.1-mini");
   const existingRunId = options?.runId;
   let run: { id: string } | null = null;
 
@@ -1077,7 +1126,12 @@ export async function generateAnalysisReportForProject(
       targetProducts,
       competitorProducts,
     });
-    const modelReport = await callOpenAi<AnalysisReportShape>(prompt);
+    const modelReport = await callLlm<AnalysisReportShape>({
+      messages: prompt,
+      projectId,
+      provider,
+      model: modelName,
+    });
 
     const report: AnalysisReportShape = {
       ...modelReport,
@@ -1226,9 +1280,13 @@ export async function generateAnalysisReportForProject(
 export async function generateCompetitorInsightForProduct({
   projectId,
   productId,
+  provider = "openai",
+  modelName,
 }: {
   projectId: string;
   productId: string;
+  provider?: AnalysisProvider;
+  modelName?: string;
 }) {
   const supabase = createAdminSupabaseClient();
 
@@ -1268,12 +1326,15 @@ export async function generateCompetitorInsightForProduct({
     throw new Error("No reviews found for this competitor");
   }
 
-  const modelInsight = await callOpenAi<CompetitorInsightShape>(
-    buildCompetitorInsightPrompt({
+  const modelInsight = await callLlm<CompetitorInsightShape>({
+    messages: buildCompetitorInsightPrompt({
       competitor: product,
       reviews,
     }),
-  );
+    projectId,
+    provider,
+    model: modelName,
+  });
 
   return {
     positive_themes: normalizeThemeItems(modelInsight.positive_themes, 8),
@@ -1371,7 +1432,7 @@ export async function regenerateListingDraftForProject(projectId: string) {
     competitorProducts,
   });
 
-  const modelResult = await callOpenAi<ListingDraftOnlyShape>(prompt);
+  const modelResult = await callOpenAi<ListingDraftOnlyShape>(prompt, projectId);
   const listingDraft: ListingDraftShape = {
     title_draft: modelResult.listing_draft?.title_draft ?? "",
     title_rationale: modelResult.listing_draft?.title_rationale ?? "",

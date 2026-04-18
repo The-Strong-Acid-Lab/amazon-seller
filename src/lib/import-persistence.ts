@@ -5,6 +5,7 @@ import { parseReviewImport } from "@/lib/review-import";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 type PersistImportOptions = {
+  userId: string;
   projectName: string;
   targetProductName?: string;
   targetProductAsin?: string;
@@ -46,6 +47,7 @@ type UploadPresetCompetitor = {
 };
 
 type PersistUploadOptions = {
+  userId: string;
   projectName: string;
   targetProductName?: string;
   targetProductAsin?: string;
@@ -99,6 +101,7 @@ export async function persistImportedReviews(
     .from("projects")
     .insert({
       name: options.projectName,
+      user_id: options.userId,
       product_name: resolvedTargetName,
       target_asin:
         options.targetProductAsin ??
@@ -383,6 +386,7 @@ export async function persistUploadedReviewFile(options: PersistUploadOptions) {
     .from("projects")
     .insert({
       name: options.projectName,
+      user_id: options.userId,
       product_name: resolvedTargetName,
       target_asin:
         options.targetProductAsin?.trim() ||

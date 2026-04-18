@@ -7,7 +7,9 @@ import {
   type ProductIdentityProfileShape,
 } from "@/lib/product-identity-profile";
 import { getConfiguredVisionModelName } from "@/lib/image-generation-provider";
+import { assertProjectOwnership, ProjectAccessError } from "@/lib/project-access";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
+import { resolveProjectApiKey } from "@/lib/user-api-keys";
 
 function requireEnv(name: string) {
   const value = process.env[name];
@@ -52,6 +54,7 @@ export async function POST(
 
   try {
     const { projectId } = await context.params;
+    await assertProjectOwnership(projectId);
 
     const [
       { data: targetProduct, error: targetProductError },
@@ -136,7 +139,9 @@ export async function POST(
     }
 
     const client = new OpenAI({
-      apiKey: requireEnv("OPENAI_API_KEY"),
+      apiKey:
+        (await resolveProjectApiKey(projectId, "openai")) ??
+        requireEnv("OPENAI_API_KEY"),
     });
     const model = getConfiguredVisionModelName();
     const profile = await generateProductIdentityProfile({
@@ -209,6 +214,10 @@ export async function POST(
 
     return NextResponse.json({ profile: data });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "识别商品身份失败。",
@@ -226,6 +235,7 @@ export async function PATCH(
 
   try {
     const { projectId } = await context.params;
+    await assertProjectOwnership(projectId);
     const body = (await request.json().catch(() => null)) as
       | { status?: "draft" | "confirmed"; profile?: Partial<ProductIdentityProfileShape> }
       | null;
@@ -293,6 +303,10 @@ export async function PATCH(
 
     return NextResponse.json({ profile: data });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "更新商品身份失败。",

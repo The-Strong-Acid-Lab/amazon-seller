@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { assertProjectOwnership, ProjectAccessError } from "@/lib/project-access";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 function slugify(value: string) {
@@ -17,6 +18,7 @@ export async function GET(
 ) {
   try {
     const { projectId } = await params;
+    await assertProjectOwnership(projectId);
     const supabase = createAdminSupabaseClient();
 
     const [{ data: project, error: projectError }, { data: report, error: reportError }] =
@@ -59,6 +61,10 @@ export async function GET(
       },
     });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Export failed." },
       { status: 500 },

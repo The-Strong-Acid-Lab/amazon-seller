@@ -2,11 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import type { AnalysisReportShape } from "@/lib/analysis";
+import { requireUser } from "@/lib/auth";
 import {
   getConfiguredImageModelName,
   getImageGenerationProvider,
 } from "@/lib/image-generation-provider";
 import { getProjectPageData } from "@/lib/projects";
+import { getUserApiKeySettings } from "@/lib/user-api-keys";
 import { AnalyzeProjectButton } from "@/components/analyze-project-button";
 import { CompetitorListModal } from "@/components/competitor-list-modal";
 import { ExportProjectReportButton } from "@/components/export-project-report-button";
@@ -95,8 +97,20 @@ export default async function ProjectPage({
   params: Promise<{ projectId: string }>;
 }) {
   try {
+    const user = await requireUser("/login");
+    const apiKeySettings = await getUserApiKeySettings(user.id);
+    const availableAnalysisProviders: Array<"openai" | "gemini"> = [];
+
+    if (apiKeySettings.hasOpenAiKey) {
+      availableAnalysisProviders.push("openai");
+    }
+
+    if (apiKeySettings.hasGeminiKey) {
+      availableAnalysisProviders.push("gemini");
+    }
+
     const { projectId } = await params;
-    const data = await getProjectPageData(projectId);
+    const data = await getProjectPageData(projectId, user.id);
     const report = asReport(data.latestReport);
     const targetProduct =
       data.projectProducts.find((product) => product.role === "target") ?? null;
@@ -194,6 +208,11 @@ export default async function ProjectPage({
 
             <div className="grid gap-3">
               <AnalyzeProjectButton
+                availableProviders={
+                  availableAnalysisProviders.length > 0
+                    ? availableAnalysisProviders
+                    : ["openai"]
+                }
                 initialRunError={data.latestAnalysisRun?.error_message ?? null}
                 initialRunStatus={data.latestAnalysisRun?.status ?? null}
                 projectId={data.project.id}
@@ -382,6 +401,11 @@ export default async function ProjectPage({
                     </CardHeader>
                     <CardContent className="grid gap-3">
                       <CompetitorListModal
+                        availableProviders={
+                          availableAnalysisProviders.length > 0
+                            ? availableAnalysisProviders
+                            : ["openai"]
+                        }
                         competitors={competitorProducts.map((product) => ({
                           ...product,
                           role: "competitor" as const,

@@ -5,6 +5,7 @@ import {
   getConfiguredImageModelName,
   getImageGenerationProvider,
 } from "@/lib/image-generation-provider";
+import { assertProjectOwnership, ProjectAccessError } from "@/lib/project-access";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import type { generateImageSlotTask } from "@/trigger/generate-image-slot-task";
 
@@ -56,6 +57,7 @@ export async function POST(
 
   try {
     const { projectId } = await context.params;
+    await assertProjectOwnership(projectId);
     const body = (await request.json().catch(() => null)) as GenerateImagePayload | null;
 
     if (!body) {
@@ -215,6 +217,10 @@ export async function POST(
       deduplicated: false,
     });
   } catch (error) {
+    if (error instanceof ProjectAccessError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+
     console.error("Image generation failed", {
       error: error instanceof Error ? error.message : String(error),
     });

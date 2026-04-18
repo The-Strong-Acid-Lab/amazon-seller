@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
 
 type AnalysisRunStatus = "queued" | "running" | "completed" | "failed";
@@ -19,12 +26,14 @@ type AnalyzeProjectButtonProps = {
   projectId: string;
   initialRunStatus: AnalysisRunStatus | null;
   initialRunError: string | null;
+  availableProviders: Array<"openai" | "gemini">;
 };
 
 export function AnalyzeProjectButton({
   projectId,
   initialRunStatus,
   initialRunError,
+  availableProviders,
 }: AnalyzeProjectButtonProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,6 +41,9 @@ export function AnalyzeProjectButton({
     initialRunStatus,
   );
   const [error, setError] = useState<string | null>(initialRunError);
+  const [selectedProvider, setSelectedProvider] = useState<
+    "openai" | "gemini"
+  >(availableProviders[0] ?? "openai");
 
   useEffect(() => {
     setRunStatus(initialRunStatus);
@@ -123,6 +135,12 @@ export function AnalyzeProjectButton({
     try {
       const response = await fetch(`/api/projects/${projectId}/analyze`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          provider: selectedProvider,
+        }),
       });
 
       const payload = (await response.json()) as AnalysisResponse;
@@ -149,6 +167,22 @@ export function AnalyzeProjectButton({
 
   return (
     <div className="grid gap-3">
+      <Select
+        onValueChange={(value: "openai" | "gemini") => setSelectedProvider(value)}
+        value={selectedProvider}
+      >
+        <SelectTrigger className="h-9 min-w-[10.5rem] rounded-md border-stone-300 bg-white px-3 text-sm text-stone-900 focus-visible:border-stone-400 focus-visible:ring-0">
+          <SelectValue placeholder="选择分析模型" />
+        </SelectTrigger>
+        <SelectContent align="start">
+          {availableProviders.includes("openai") ? (
+            <SelectItem value="openai">OpenAI</SelectItem>
+          ) : null}
+          {availableProviders.includes("gemini") ? (
+            <SelectItem value="gemini">Gemini</SelectItem>
+          ) : null}
+        </SelectContent>
+      </Select>
       <Button
         className="px-5"
         disabled={isAnalyzing}
