@@ -23,7 +23,7 @@ export function ImageLightbox({
       <DialogTrigger asChild>
         <button
           aria-label={`查看大图: ${alt}`}
-          className="group relative block w-full cursor-zoom-in overflow-hidden rounded-md"
+          className="group relative block h-full w-full cursor-zoom-in overflow-hidden rounded-md"
           type="button"
         >
           <img

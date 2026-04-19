@@ -71,22 +71,18 @@ export function ImageBriefWorkbench({
 }) {
   const router = useRouter();
   const [generatingSlot, setGeneratingSlot] = useState<string | null>(null);
-  const [keepingAssetId, setKeepingAssetId] = useState<string | null>(null);
-  const [savingSlotId, setSavingSlotId] = useState<string | null>(null);
   const [uploadingProductId, setUploadingProductId] = useState<string | null>(null);
   const [uploadingFileCount, setUploadingFileCount] = useState(0);
   const [updatingReferenceId, setUpdatingReferenceId] = useState<string | null>(null);
   const [deletingReferenceId, setDeletingReferenceId] = useState<string | null>(null);
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
-  const [expandedSlotId, setExpandedSlotId] = useState<string | null>("main_image");
-  const [expandedAssetIds, setExpandedAssetIds] = useState<Record<string, boolean>>({});
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraftFields>>({});
   const [promptOverrides, setPromptOverrides] = useState<Record<string, string>>({});
   const [promptDeltas, setPromptDeltas] = useState<Record<string, string>>({});
-  const [baseAssetBySlot, setBaseAssetBySlot] = useState<Record<string, string>>({});
   const [selectedModelBySlot, setSelectedModelBySlot] = useState<Record<string, string>>({});
   const [runStateBySlot, setRunStateBySlot] = useState<Record<string, ImageGenerationRun>>({});
+  const [rebuildingPromptSlotId, setRebuildingPromptSlotId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const defaultImageModelOptionId = `${defaultImageProvider}:${defaultImageModel}`;
@@ -276,10 +272,6 @@ export function ImageBriefWorkbench({
     });
   }
 
-  function getBaseSlot(slotId: string) {
-    return baseStrategySlots.find((slot) => slot.id === slotId) ?? null;
-  }
-
   function isSlotFieldsDirty(slot: ImageStrategySlotPlan) {
     const draft = getSlotDraft(slot.id, slot);
 
@@ -317,16 +309,6 @@ export function ImageBriefWorkbench({
 
   function getPromptDelta(slotId: string) {
     return promptDeltas[slotId] ?? "";
-  }
-
-  function getSelectedBaseAsset(slotId: string, slotAssets: ImageAsset[]) {
-    const baseAssetId = baseAssetBySlot[slotId];
-
-    if (!baseAssetId) {
-      return null;
-    }
-
-    return slotAssets.find((asset) => asset.id === baseAssetId) ?? null;
   }
 
   function resolveSlotAssets(slotId: string, sourceBriefSlot: string | null) {
@@ -419,75 +401,6 @@ export function ImageBriefWorkbench({
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "保存图片策略失败。");
       return false;
-    }
-  }
-
-  async function resetSlotToLatestAnalysis(slotId: string) {
-    const baseSlot = getBaseSlot(slotId);
-
-    if (!baseSlot) {
-      return;
-    }
-
-    const resetDraft = {
-      purpose: baseSlot.purpose,
-      conversionGoal: baseSlot.conversionGoal,
-      recommendedOverlayCopy: baseSlot.recommendedOverlayCopy,
-    };
-    const resetPrompt = buildEditableImagePrompt(baseSlot);
-
-    setSlotDrafts((current) => ({
-      ...current,
-      [slotId]: resetDraft,
-    }));
-    setPromptOverrides((current) => ({
-      ...current,
-      [slotId]: resetPrompt,
-    }));
-    setSavingSlotId(slotId);
-    setError(null);
-    setMessage(null);
-
-    try {
-      const response = await fetch(`/api/projects/${projectId}/image-strategy-slots`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          slots: [
-            {
-              slotKey: baseSlot.id,
-              order: baseSlot.order,
-              section: baseSlot.section,
-              title: baseSlot.title,
-              purpose: baseSlot.purpose,
-              conversionGoal: baseSlot.conversionGoal,
-              recommendedOverlayCopy: baseSlot.recommendedOverlayCopy,
-              evidence: baseSlot.evidence,
-              visualDirection: baseSlot.visualDirection,
-              complianceNotes: baseSlot.complianceNotes,
-              promptText: resetPrompt,
-              sourceBriefSlot: baseSlot.sourceBriefSlot,
-            },
-          ],
-        }),
-      });
-
-      const payload = (await response.json().catch(() => ({}))) as ActionResponse;
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "重置图片策略失败。");
-      }
-
-      setMessage("已重置为最新分析结果。");
-      router.refresh();
-    } catch (caughtError) {
-      const nextError =
-        caughtError instanceof Error ? caughtError.message : "重置图片策略失败。";
-      setError(nextError);
-    } finally {
-      setSavingSlotId(null);
     }
   }
 
@@ -691,8 +604,6 @@ export function ImageBriefWorkbench({
     const selectedModel =
       IMAGE_MODEL_OPTIONS.find((option) => option.id === selectedModelId) ??
       IMAGE_MODEL_OPTIONS[0];
-    const slotAssets = resolveSlotAssets(slot.id, slot.sourceBriefSlot);
-    const selectedBaseAsset = getSelectedBaseAsset(slot.id, slotAssets);
     const promptDelta = getPromptDelta(slot.id).trim();
 
     if (generationMode === "disabled") {
@@ -726,7 +637,6 @@ export function ImageBriefWorkbench({
           complianceNotes: slot.complianceNotes,
           promptOverride: getPromptOverrideForGeneration(slot),
           promptDelta: promptDelta || undefined,
-          baseAssetId: selectedBaseAsset?.id,
           imageProvider: selectedModel.provider,
           imageModel: selectedModel.model,
           force: Boolean(options?.force),
@@ -782,40 +692,64 @@ export function ImageBriefWorkbench({
     }
   }
 
-  async function handleSaveSlot(slotId: string) {
-    setSavingSlotId(slotId);
-    setError(null);
-    setMessage(null);
+  async function handleRebuildPrompt(slot: ImageStrategySlotPlan) {
+    const draft = getSlotDraft(slot.id, slot);
+    const currentPrompt = getPromptValue(slot);
+    const slotReferenceImageUrl =
+      targetProduct
+        ? (referenceImagesByProduct.get(targetProduct.id) ?? [])[slot.order - 1]?.image_url ?? ""
+        : "";
 
-    try {
-      await saveSlots([slotId]);
-    } finally {
-      setSavingSlotId(null);
-    }
-  }
-
-  async function handleKeep(asset: ImageAsset) {
-    setKeepingAssetId(asset.id);
+    setRebuildingPromptSlotId(slot.id);
     setError(null);
     setMessage(null);
 
     try {
       const response = await fetch(
-        `/api/projects/${projectId}/image-assets/${asset.id}/keep`,
-        { method: "POST" },
+        `/api/projects/${projectId}/image-strategy-slots/rebuild-prompt`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            slotKey: slot.id,
+            slotTitle: slot.title,
+            purpose: draft.purpose,
+            conversionGoal: draft.conversionGoal,
+            recommendedOverlayCopy: draft.recommendedOverlayCopy,
+            evidence: slot.evidence,
+            visualDirection: slot.visualDirection,
+            complianceNotes: slot.complianceNotes,
+            currentPrompt,
+            referenceImageUrl: slotReferenceImageUrl,
+          }),
+        },
       );
-      const payload = (await response.json().catch(() => ({}))) as ActionResponse;
 
-      if (!response.ok) {
-        throw new Error(payload.error ?? "操作失败。");
+      const payload = (await response.json().catch(() => ({}))) as ActionResponse & {
+        prompt?: string;
+        matchScore?: number | null;
+        mismatchNotes?: string;
+      };
+
+      if (!response.ok || !payload.prompt) {
+        throw new Error(payload.error ?? "重建提示词失败。");
       }
 
-      setMessage(`${asset.slot} 已保留 v${asset.version}。`);
-      router.refresh();
-    } catch (keepError) {
-      setError(keepError instanceof Error ? keepError.message : "操作失败。");
+      setPromptOverrides((current) => ({
+        ...current,
+        [slot.id]: payload.prompt || currentPrompt,
+      }));
+      const suffix =
+        typeof payload.matchScore === "number"
+          ? `（槽位匹配度 ${payload.matchScore}/100）`
+          : "";
+      setMessage(`${slot.title} 的 Prompt 已重建${suffix}。`);
+    } catch (rebuildError) {
+      setError(rebuildError instanceof Error ? rebuildError.message : "重建提示词失败。");
     } finally {
-      setKeepingAssetId(null);
+      setRebuildingPromptSlotId(null);
     }
   }
 
@@ -938,15 +872,12 @@ export function ImageBriefWorkbench({
               canGenerate={generationMode !== "disabled"}
               deletingAssetId={deletingAssetId}
               draft={getSlotDraft(slot.id, slot)}
-              expandedAssetIds={expandedAssetIds}
-              isExpanded={expandedSlotId === slot.id}
               isGenerating={
                 generatingSlot === slot.id ||
                 runStateBySlot[slot.id]?.status === "queued" ||
                 runStateBySlot[slot.id]?.status === "running"
               }
-              isSaving={savingSlotId === slot.id}
-              keepingAssetId={keepingAssetId}
+              isRebuildingPrompt={rebuildingPromptSlotId === slot.id}
               key={slot.id}
               modelOptions={IMAGE_MODEL_OPTIONS}
               onDeleteAsset={(asset) =>
@@ -967,29 +898,11 @@ export function ImageBriefWorkbench({
                   [slot.id]: value,
                 }))
               }
-              onKeepAsset={handleKeep}
               onModelChange={(value) =>
                 setSelectedModelBySlot((current) => ({
                   ...current,
                   [slot.id]: value,
                 }))
-              }
-              onSelectBaseAsset={(assetId) =>
-                setBaseAssetBySlot((current) => ({
-                  ...current,
-                  [slot.id]: assetId,
-                }))
-              }
-              onClearBaseAsset={() =>
-                setBaseAssetBySlot((current) => {
-                  if (!current[slot.id]) {
-                    return current;
-                  }
-
-                  const next = { ...current };
-                  delete next[slot.id];
-                  return next;
-                })
               }
               onPromptChange={(value) =>
                 setPromptOverrides((current) => {
@@ -1013,31 +926,15 @@ export function ImageBriefWorkbench({
                   [slot.id]: buildSuggestedPrompt(slot),
                 }))
               }
-              onResetAnalysis={() => resetSlotToLatestAnalysis(slot.id)}
-              onSave={() => handleSaveSlot(slot.id)}
-              onToggleAssetPrompt={(assetId) =>
-                setExpandedAssetIds((current) => {
-                  if (current[assetId]) {
-                    const next = { ...current };
-                    delete next[assetId];
-                    return next;
-                  }
-
-                  return {
-                    ...current,
-                    [assetId]: true,
-                  };
-                })
-              }
-              onToggleExpand={() =>
-                setExpandedSlotId((current) =>
-                  current === slot.id ? null : slot.id,
-                )
-              }
+              onRebuildPrompt={() => handleRebuildPrompt(slot)}
               promptValue={getPromptValue(slot)}
               promptDeltaValue={getPromptDelta(slot.id)}
               selectedModelId={selectedModelBySlot[slot.id] ?? defaultImageModelOptionId}
-              selectedBaseAssetId={baseAssetBySlot[slot.id] ?? null}
+              slotReferenceImage={
+                targetProduct
+                  ? (referenceImagesByProduct.get(targetProduct.id) ?? [])[slot.order - 1] ?? null
+                  : null
+              }
               slot={slot}
               generationRun={runStateBySlot[slot.id] ?? null}
               slotAssets={resolveSlotAssets(slot.id, slot.sourceBriefSlot)}

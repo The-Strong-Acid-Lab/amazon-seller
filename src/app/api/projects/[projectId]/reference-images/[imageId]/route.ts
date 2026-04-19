@@ -32,7 +32,7 @@ export async function PATCH(
 
     const { data: imageRecord, error: imageError } = await supabase
       .from("product_reference_images")
-      .select("id, project_id, project_product_id, role")
+      .select("id, project_id, project_product_id, role, created_at, pinned_for_main")
       .eq("id", imageId)
       .eq("project_id", projectId)
       .single();
@@ -68,6 +68,43 @@ export async function PATCH(
     }
 
     if (nextPinnedForMain) {
+      const { data: currentPinnedImage, error: currentPinnedImageError } = await supabase
+        .from("product_reference_images")
+        .select("id, created_at")
+        .eq("project_id", projectId)
+        .eq("project_product_id", imageRecord.project_product_id)
+        .eq("pinned_for_main", true)
+        .neq("id", imageId)
+        .maybeSingle();
+
+      if (currentPinnedImageError) {
+        throw new Error(currentPinnedImageError.message);
+      }
+
+      // Swap timeline positions between previous main and the new main candidate.
+      // This keeps the remaining image order minimally changed.
+      if (currentPinnedImage?.id && currentPinnedImage.created_at && imageRecord.created_at) {
+        const { error: swapCurrentPinnedError } = await supabase
+          .from("product_reference_images")
+          .update({ created_at: imageRecord.created_at })
+          .eq("id", currentPinnedImage.id)
+          .eq("project_id", projectId);
+
+        if (swapCurrentPinnedError) {
+          throw new Error(swapCurrentPinnedError.message);
+        }
+
+        const { error: swapCandidateError } = await supabase
+          .from("product_reference_images")
+          .update({ created_at: currentPinnedImage.created_at })
+          .eq("id", imageId)
+          .eq("project_id", projectId);
+
+        if (swapCandidateError) {
+          throw new Error(swapCandidateError.message);
+        }
+      }
+
       const { error: clearPinnedError } = await supabase
         .from("product_reference_images")
         .update({ pinned_for_main: false })
