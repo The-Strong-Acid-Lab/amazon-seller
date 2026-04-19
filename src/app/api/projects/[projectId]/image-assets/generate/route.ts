@@ -22,6 +22,8 @@ type GenerateImagePayload = {
   visualDirection?: string;
   complianceNotes?: string;
   promptOverride?: string;
+  promptDelta?: string;
+  baseAssetId?: string;
   imageProvider?: "openai" | "gemini";
   imageModel?: string;
   force?: boolean;
@@ -72,6 +74,8 @@ export async function POST(
     const visualDirection = sanitizeText(body.visualDirection);
     const complianceNotes = sanitizeText(body.complianceNotes);
     const promptOverride = sanitizeText(body.promptOverride);
+    const promptDelta = sanitizeText(body.promptDelta);
+    const baseAssetId = sanitizeText(body.baseAssetId);
     const imageProvider =
       body.imageProvider === "gemini" || body.imageProvider === "openai"
         ? body.imageProvider
@@ -186,6 +190,8 @@ export async function POST(
           visualDirection,
           complianceNotes,
           promptOverride,
+          promptDelta,
+          baseAssetId,
           imageProvider,
           imageModel,
         },

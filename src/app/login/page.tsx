@@ -1,13 +1,28 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AuthForm } from "@/components/auth-form";
+import { buildConsoleUrl, buildRootUrl } from "@/lib/host-routing.server";
+import { isConsoleSubdomainEnabled } from "@/lib/runtime-flags";
 import { getAuthenticatedUser } from "@/lib/supabase/server";
 
 export default async function LoginPage() {
+  const useSubdomain = isConsoleSubdomainEnabled();
+  const headerList = await headers();
+  const host = (headerList.get("host") || "").toLowerCase();
+  const isConsoleHost = host.startsWith("console.");
   const user = await getAuthenticatedUser();
 
+  if (useSubdomain && isConsoleHost) {
+    redirect(await buildRootUrl("/login"));
+  }
+
   if (user) {
-    redirect("/console");
+    if (useSubdomain) {
+      redirect(await buildConsoleUrl("/"));
+    }
+
+    redirect("/dashboard");
   }
 
   return (

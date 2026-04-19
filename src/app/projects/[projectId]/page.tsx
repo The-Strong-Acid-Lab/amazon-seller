@@ -195,7 +195,7 @@ export default async function ProjectPage({
           <div className="flex flex-wrap items-start justify-between gap-6 rounded-xl border border-[var(--page-border)] bg-white/80 px-6 py-6 shadow-[0_20px_70px_rgba(54,40,24,0.08)] sm:px-8">
             <div>
               <div className="flex items-center gap-3">
-                <Link href="/console">
+                <Link href="/dashboard">
                   <Button size="sm" variant="outline">
                     返回 Console
                   </Button>

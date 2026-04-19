@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { createBrowserSupabaseClient } from "@/lib/supabase/client";
+import { buildConsoleUrlInBrowser } from "@/lib/host-routing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,9 +12,11 @@ import {
   InputOTPGroup,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
+import { isConsoleSubdomainEnabled } from "@/lib/runtime-flags";
 
 export function AuthForm() {
   const router = useRouter();
+  const useSubdomain = isConsoleSubdomainEnabled();
   const [email, setEmail] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [showOtp, setShowOtp] = useState(false);
@@ -59,7 +62,7 @@ export function AuthForm() {
 
     try {
       const supabase = createBrowserSupabaseClient();
-      const { error: verifyError } = await supabase.auth.verifyOtp({
+      const { data, error: verifyError } = await supabase.auth.verifyOtp({
         email,
         token: otpCode,
         type: "email",
@@ -69,7 +72,23 @@ export function AuthForm() {
         throw verifyError;
       }
 
-      router.replace("/console");
+      if (useSubdomain) {
+        const session = data.session;
+
+        if (!session) {
+          throw new Error("登录成功但未返回会话。");
+        }
+
+        const hash = new URLSearchParams({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+        }).toString();
+
+        window.location.assign(buildConsoleUrlInBrowser(`/auth/bridge#${hash}`));
+        return;
+      }
+
+      router.replace("/dashboard");
       router.refresh();
     } catch (caughtError) {
       const nextError =

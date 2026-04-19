@@ -1,14 +1,31 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { buildConsoleUrl, buildRootUrl } from "@/lib/host-routing.server";
+import { isConsoleSubdomainEnabled } from "@/lib/runtime-flags";
 import { getAuthenticatedUser } from "@/lib/supabase/server";
 
 export default async function Home() {
   const user = await getAuthenticatedUser();
+  const useSubdomain = isConsoleSubdomainEnabled();
+  const headerList = await headers();
+  const host = (headerList.get("host") || "").toLowerCase();
+  const isConsoleHost = host.startsWith("console.");
+
+  if (useSubdomain && isConsoleHost) {
+    if (!user) {
+      redirect(await buildRootUrl("/login"));
+    }
+
+    redirect("/dashboard");
+  }
+
+  const consoleHref = useSubdomain ? await buildConsoleUrl("/") : "/dashboard";
 
   if (user) {
-    redirect("/console");
+    redirect(consoleHref);
   }
 
   return (
@@ -20,7 +37,7 @@ export default async function Home() {
               <Link href="/login">邮箱登录</Link>
             </Button>
             <Button asChild className="h-10 px-6" variant="outline">
-              <Link href="/console">查看 Console</Link>
+              <Link href={consoleHref}>查看 Console</Link>
             </Button>
           </div>
         </section>

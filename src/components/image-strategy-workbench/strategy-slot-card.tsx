@@ -44,13 +44,18 @@ export function StrategySlotCard({
   onToggleExpand,
   onSave,
   onGenerate,
+  onPromptDeltaChange,
   onResetPrompt,
   onResetAnalysis,
   onModelChange,
   onPromptChange,
+  onSelectBaseAsset,
+  onClearBaseAsset,
   onToggleAssetPrompt,
   onKeepAsset,
   onDeleteAsset,
+  promptDeltaValue,
+  selectedBaseAssetId,
 }: {
   slot: ImageStrategySlotPlan;
   draft: SlotDraftFields;
@@ -69,13 +74,18 @@ export function StrategySlotCard({
   onToggleExpand: () => void;
   onSave: () => void | Promise<void>;
   onGenerate: () => void | Promise<void>;
+  onPromptDeltaChange: (value: string) => void;
   onResetPrompt: () => void;
   onResetAnalysis: () => void | Promise<void>;
   onModelChange: (value: string) => void;
   onPromptChange: (value: string) => void;
+  onSelectBaseAsset: (assetId: string) => void;
+  onClearBaseAsset: () => void;
   onToggleAssetPrompt: (assetId: string) => void;
   onKeepAsset: (asset: ImageAsset) => void | Promise<void>;
   onDeleteAsset: (asset: ImageAsset) => void;
+  promptDeltaValue: string;
+  selectedBaseAssetId: string | null;
 }) {
   const hasConsistencyWarning =
     generationRun?.error_message?.startsWith("商品一致性提醒");
@@ -141,13 +151,13 @@ export function StrategySlotCard({
                 ))}
               </SelectContent>
             </Select>
-            <Button onClick={onToggleExpand} size="sm" variant="outline">
+            <Button onClick={onToggleExpand} size="lg" variant="outline">
               {isExpanded ? "收起策略" : "查看策略"}
             </Button>
             <Button
               disabled={isSaving}
               onClick={() => void onSave()}
-              size="sm"
+              size="lg"
               variant="outline"
             >
               {isSaving ? "保存中..." : "保存槽位"}
@@ -157,7 +167,7 @@ export function StrategySlotCard({
                 className="w-full"
                 disabled={isGenerating || !canGenerate}
                 onClick={() => void onGenerate()}
-                size="sm"
+                size="lg"
               >
                 {isGenerating
                   ? "生成中..."
@@ -182,6 +192,20 @@ export function StrategySlotCard({
               </div>
             </div>
           ) : null}
+
+          <div className="flex flex-wrap items-center gap-2 text-xs text-stone-600">
+            <span>
+              当前生成基底：
+              {selectedBaseAssetId
+                ? ` v${slotAssets.find((asset) => asset.id === selectedBaseAssetId)?.version ?? "?"}`
+                : " 自动选择"}
+            </span>
+            {selectedBaseAssetId ? (
+              <Button onClick={onClearBaseAsset} size="sm" variant="ghost">
+                清除基底
+              </Button>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -192,7 +216,7 @@ export function StrategySlotCard({
               <div className="flex h-[520px] flex-col gap-3 rounded-2xl border border-stone-200 bg-stone-50 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-stone-900">
-                    生成指令 Prompt
+                    生成Prompt
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -223,6 +247,19 @@ export function StrategySlotCard({
                   onChange={(event) => onPromptChange(event.target.value)}
                   value={promptValue}
                 />
+                <div className="grid gap-1">
+                  <p className="text-xs font-medium text-stone-600">
+                    本次修改（可选）
+                  </p>
+                  <Textarea
+                    className="min-h-[84px] resize-y bg-white text-xs leading-5"
+                    onChange={(event) =>
+                      onPromptDeltaChange(event.target.value)
+                    }
+                    placeholder="例如：保持脚托和椅背结构不变，仅更换场景光线与背景元素。"
+                    value={promptDeltaValue}
+                  />
+                </div>
               </div>
 
               <div className="flex h-[360px] self-start flex-col gap-3 rounded-2xl border border-stone-200 bg-white p-4">
@@ -360,11 +397,26 @@ export function StrategySlotCard({
                             </p>
                           </div>
                         </div>
-                        {asset.is_kept ? (
-                          <Badge className="rounded-full" variant="secondary">
-                            当前
-                          </Badge>
-                        ) : null}
+                        <div className="flex items-center gap-2">
+                          {asset.is_kept ? (
+                            <Badge className="rounded-full" variant="secondary">
+                              当前
+                            </Badge>
+                          ) : null}
+                          <Button
+                            onClick={() => onSelectBaseAsset(asset.id)}
+                            size="sm"
+                            variant={
+                              selectedBaseAssetId === asset.id
+                                ? "secondary"
+                                : "outline"
+                            }
+                          >
+                            {selectedBaseAssetId === asset.id
+                              ? "已设为基底"
+                              : "基于此版本生成"}
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>

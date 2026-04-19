@@ -17,6 +17,8 @@ export const generateImageSlotTask = task({
       visualDirection?: string;
       complianceNotes?: string;
       promptOverride?: string;
+      promptDelta?: string;
+      baseAssetId?: string;
       imageProvider?: "openai" | "gemini";
       imageModel?: string;
     };

@@ -89,7 +89,7 @@ export function HomeConsole({
 
             {!canCreateProject ? (
               <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                先到 <Link className="font-medium underline" href="/console/settings">Settings</Link> 保存你自己的 API Key，之后才能新建项目。
+                先到 <Link className="font-medium underline" href="/dashboard/settings">Settings</Link> 保存你自己的 API Key，之后才能新建项目。
               </div>
             ) : null}
 

@@ -83,6 +83,8 @@ export function ImageBriefWorkbench({
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraftFields>>({});
   const [promptOverrides, setPromptOverrides] = useState<Record<string, string>>({});
+  const [promptDeltas, setPromptDeltas] = useState<Record<string, string>>({});
+  const [baseAssetBySlot, setBaseAssetBySlot] = useState<Record<string, string>>({});
   const [selectedModelBySlot, setSelectedModelBySlot] = useState<Record<string, string>>({});
   const [runStateBySlot, setRunStateBySlot] = useState<Record<string, ImageGenerationRun>>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -176,9 +178,13 @@ export function ImageBriefWorkbench({
     for (const [productId, productImages] of mapping.entries()) {
       mapping.set(
         productId,
-        productImages.sort((left, right) =>
-          right.created_at.localeCompare(left.created_at),
-        ),
+        productImages.sort((left, right) => {
+          if (left.pinned_for_main !== right.pinned_for_main) {
+            return left.pinned_for_main ? -1 : 1;
+          }
+
+          return right.created_at.localeCompare(left.created_at);
+        }),
       );
     }
 
@@ -307,6 +313,20 @@ export function ImageBriefWorkbench({
     }
 
     return slot.defaultPrompt;
+  }
+
+  function getPromptDelta(slotId: string) {
+    return promptDeltas[slotId] ?? "";
+  }
+
+  function getSelectedBaseAsset(slotId: string, slotAssets: ImageAsset[]) {
+    const baseAssetId = baseAssetBySlot[slotId];
+
+    if (!baseAssetId) {
+      return null;
+    }
+
+    return slotAssets.find((asset) => asset.id === baseAssetId) ?? null;
   }
 
   function resolveSlotAssets(slotId: string, sourceBriefSlot: string | null) {
@@ -671,6 +691,9 @@ export function ImageBriefWorkbench({
     const selectedModel =
       IMAGE_MODEL_OPTIONS.find((option) => option.id === selectedModelId) ??
       IMAGE_MODEL_OPTIONS[0];
+    const slotAssets = resolveSlotAssets(slot.id, slot.sourceBriefSlot);
+    const selectedBaseAsset = getSelectedBaseAsset(slot.id, slotAssets);
+    const promptDelta = getPromptDelta(slot.id).trim();
 
     if (generationMode === "disabled") {
       setError("请至少上传 1 张我的商品图或竞品参考图，再生成方案图。");
@@ -702,6 +725,8 @@ export function ImageBriefWorkbench({
           visualDirection: slot.visualDirection,
           complianceNotes: slot.complianceNotes,
           promptOverride: getPromptOverrideForGeneration(slot),
+          promptDelta: promptDelta || undefined,
+          baseAssetId: selectedBaseAsset?.id,
           imageProvider: selectedModel.provider,
           imageModel: selectedModel.model,
           force: Boolean(options?.force),
@@ -936,12 +961,35 @@ export function ImageBriefWorkbench({
                 })
               }
               onGenerate={() => handleGenerate(slot.id)}
+              onPromptDeltaChange={(value) =>
+                setPromptDeltas((current) => ({
+                  ...current,
+                  [slot.id]: value,
+                }))
+              }
               onKeepAsset={handleKeep}
               onModelChange={(value) =>
                 setSelectedModelBySlot((current) => ({
                   ...current,
                   [slot.id]: value,
                 }))
+              }
+              onSelectBaseAsset={(assetId) =>
+                setBaseAssetBySlot((current) => ({
+                  ...current,
+                  [slot.id]: assetId,
+                }))
+              }
+              onClearBaseAsset={() =>
+                setBaseAssetBySlot((current) => {
+                  if (!current[slot.id]) {
+                    return current;
+                  }
+
+                  const next = { ...current };
+                  delete next[slot.id];
+                  return next;
+                })
               }
               onPromptChange={(value) =>
                 setPromptOverrides((current) => {
@@ -987,7 +1035,9 @@ export function ImageBriefWorkbench({
                 )
               }
               promptValue={getPromptValue(slot)}
+              promptDeltaValue={getPromptDelta(slot.id)}
               selectedModelId={selectedModelBySlot[slot.id] ?? defaultImageModelOptionId}
+              selectedBaseAssetId={baseAssetBySlot[slot.id] ?? null}
               slot={slot}
               generationRun={runStateBySlot[slot.id] ?? null}
               slotAssets={resolveSlotAssets(slot.id, slot.sourceBriefSlot)}

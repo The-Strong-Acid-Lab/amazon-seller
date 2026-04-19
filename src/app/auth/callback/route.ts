@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { buildConsoleUrl } from "@/lib/host-routing.server";
+import { isConsoleSubdomainEnabled } from "@/lib/runtime-flags";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
@@ -11,5 +13,9 @@ export async function GET(request: Request) {
     await supabase.auth.exchangeCodeForSession(code);
   }
 
-  return NextResponse.redirect(new URL("/console", request.url));
+  if (isConsoleSubdomainEnabled()) {
+    return NextResponse.redirect(await buildConsoleUrl("/"));
+  }
+
+  return NextResponse.redirect(new URL("/dashboard", request.url));
 }

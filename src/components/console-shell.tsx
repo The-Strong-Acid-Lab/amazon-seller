@@ -30,7 +30,7 @@ const NAV_ITEMS: ReadonlyArray<{
 }> = [
   {
     label: "Projects",
-    href: "/console",
+    href: "/dashboard",
     description: "项目与工作台",
   },
   {
@@ -47,7 +47,7 @@ const NAV_ITEMS: ReadonlyArray<{
   },
   {
     label: "Settings",
-    href: "/console/settings",
+    href: "/dashboard/settings",
     description: "账户与 API Key",
   },
 ] as const;

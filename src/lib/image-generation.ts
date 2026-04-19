@@ -31,6 +31,8 @@ export type ImageGenerationPayload = {
   visualDirection?: string;
   complianceNotes?: string;
   promptOverride?: string;
+  promptDelta?: string;
+  baseAssetId?: string;
   imageProvider?: "openai" | "gemini";
   imageModel?: string;
 };
@@ -374,6 +376,8 @@ export async function executeImageGenerationForSlot({
   const visualDirection = sanitizeText(payload.visualDirection);
   const complianceNotes = sanitizeText(payload.complianceNotes);
   const promptOverride = sanitizeText(payload.promptOverride);
+  const promptDelta = sanitizeText(payload.promptDelta);
+  const baseAssetId = sanitizeText(payload.baseAssetId);
 
   if (!slot) {
     throw new Error("Slot is required.");
@@ -483,6 +487,16 @@ export async function executeImageGenerationForSlot({
     .limit(1)
     .maybeSingle();
 
+  const { data: baseAssetRow, error: baseAssetError } = baseAssetId
+    ? await supabase
+        .from("image_assets")
+        .select("id, slot, image_url, version")
+        .eq("project_id", projectId)
+        .eq("slot", slot)
+        .eq("id", baseAssetId)
+        .maybeSingle()
+    : { data: null, error: null };
+
   if (latestVersionError) {
     if (latestVersionError.code === "42P01") {
       throw new Error(
@@ -491,6 +505,14 @@ export async function executeImageGenerationForSlot({
     }
 
     throw new Error(latestVersionError.message);
+  }
+
+  if (baseAssetError) {
+    if (baseAssetError.code === "42P01") {
+      throw new Error("数据库结构尚未更新，请先执行 `supabase db push`（缺少 image_assets）。");
+    }
+
+    throw new Error(baseAssetError.message);
   }
 
   const version = (latestVersionRow?.version ?? 0) + 1;
@@ -766,11 +788,24 @@ export async function executeImageGenerationForSlot({
       ? [
           "Variation instructions:",
           "This is a regeneration for the same slot.",
-          "Make the background treatment and overall composition materially different from earlier versions.",
-          "Avoid repeating the same environment, camera framing, furniture layout, props, or backdrop styling.",
+          "Prefer changing background treatment and overall composition.",
+          "Avoid repeating the same environment, camera framing, furniture layout, props, or backdrop styling when possible.",
           "Keep the slot goal and any user refinements, but change the scene execution enough to feel like a distinct option.",
         ]
       : [];
+  const baseAnchorInstructions =
+    baseAssetRow?.image_url
+      ? [
+          "Base version anchor:",
+          `Use v${baseAssetRow.version} as the base version for this regeneration.`,
+          "Preserve core product structure and proportions from the base version.",
+          "Do not remove or simplify structural components shown on the base product (for example: footrest, armrests, lumbar support, wheel base).",
+          "Allow scene/background/composition changes, but keep product identity and structure stable.",
+        ]
+      : [];
+  const promptDeltaInstructions = promptDelta
+    ? ["Run delta instructions (highest priority unless conflicting with identity/compliance):", promptDelta]
+    : [];
   const generationPrompt = (
     generationMode === "concept"
       ? [
@@ -783,6 +818,8 @@ export async function executeImageGenerationForSlot({
           "Create a concept draft for the same broad product category, optimized for the slot goal.",
           `Product context: ${targetProduct?.name || "unknown product"}.`,
           ...variationInstructions,
+          ...baseAnchorInstructions,
+          ...promptDeltaInstructions,
           "No text, no letters, no logo, no watermark.",
         ]
       : promptOverride
@@ -810,7 +847,9 @@ export async function executeImageGenerationForSlot({
               ? effectiveIdentityProfile?.must_not_change.join("; ")
               : ""
           }.`,
+          ...baseAnchorInstructions,
           ...variationInstructions,
+          ...promptDeltaInstructions,
         ]
       : [
           promptEn,
@@ -836,10 +875,26 @@ export async function executeImageGenerationForSlot({
               ? effectiveIdentityProfile?.must_not_change.join("; ")
               : ""
           }.`,
+          ...baseAnchorInstructions,
           ...variationInstructions,
+          ...promptDeltaInstructions,
           "No text, no letters, no logo, no watermark.",
         ]
   ).join("\n");
+
+  const editReferenceImagesWithBase =
+    baseAssetRow?.image_url && !editReferenceImages.some((image) => image.id === baseAssetRow.id)
+      ? [
+          {
+            id: baseAssetRow.id,
+            fileName: `base-v${baseAssetRow.version}.png`,
+            imageUrl: baseAssetRow.image_url,
+            referenceKind: "base_generated",
+            pinnedForMain: false,
+          },
+          ...editReferenceImages,
+        ].slice(0, 5)
+      : editReferenceImages;
 
   const imageBuffer =
     imageProvider === "gemini"
@@ -847,11 +902,11 @@ export async function executeImageGenerationForSlot({
           projectId,
           modelName,
           prompt: generationPrompt,
-          referenceImages: editReferenceImages,
+          referenceImages: editReferenceImagesWithBase,
         })
       : await (async () => {
           const referenceFiles = await Promise.all(
-            editReferenceImages.map((image) =>
+            editReferenceImagesWithBase.map((image) =>
               urlToUploadableFile(image.imageUrl, image.fileName),
             ),
           );

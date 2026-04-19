@@ -5,24 +5,7 @@ import { useState } from "react";
 import { ImageLightbox } from "@/components/image-lightbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type { ProductReferenceImage } from "@/components/image-strategy-workbench/types";
-
-const REFERENCE_KIND_OPTIONS = [
-  { value: "untyped", label: "系统待判断" },
-  { value: "hero_source", label: "建议用于主图" },
-  { value: "structure_lock", label: "建议锁定商品结构" },
-  { value: "material_lock", label: "建议锁定材质细节" },
-  { value: "lifestyle_ref", label: "建议用于场景感" },
-  { value: "competitor_inspiration", label: "竞品灵感" },
-  { value: "infographic_ignore", label: "建议忽略" },
-] as const;
 
 export function ReferenceImageSection({
   title,
@@ -115,11 +98,21 @@ export function ReferenceImageSection({
       <div className="grid gap-2">
         {images.length > 0 ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {images.map((image) => (
+            {images.map((image, index) => (
               <div
                 key={image.id}
                 className="rounded-lg border border-stone-200 bg-white p-2"
               >
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[11px] font-medium text-stone-500">
+                    #{index + 1}
+                  </span>
+                  {showMainImagePin && image.pinned_for_main ? (
+                    <span className="rounded-full bg-stone-900 px-2 py-0.5 text-[10px] font-medium text-white">
+                      主图
+                    </span>
+                  ) : null}
+                </div>
                 {image.image_url ? (
                   <ImageLightbox
                     alt={image.file_name}
@@ -131,35 +124,7 @@ export function ReferenceImageSection({
                     无预览图
                   </div>
                 )}
-                <p className="mt-2 truncate text-xs text-stone-600">
-                  {image.file_name}
-                </p>
                 <div className="mt-2 grid gap-2">
-                  <p className="text-[11px] text-stone-500">
-                    系统会自动建议图片用途，只有明显不对时再手动改。
-                  </p>
-                  <Select
-                    onValueChange={(value) =>
-                      void onUpdateMetadata(image, {
-                        referenceKind: value as ProductReferenceImage["reference_kind"],
-                      })
-                    }
-                    value={image.reference_kind}
-                  >
-                    <SelectTrigger
-                      className="h-8 w-full border-stone-300 bg-white text-xs text-stone-900"
-                      disabled={updatingReferenceId === image.id}
-                    >
-                      <SelectValue placeholder="选择标签" />
-                    </SelectTrigger>
-                    <SelectContent align="start">
-                      {REFERENCE_KIND_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                   {showMainImagePin ? (
                     <Button
                       className="w-full"
