@@ -65,7 +65,7 @@ export function AnalyzeProjectButton({
           table: "analysis_runs",
           filter: `project_id=eq.${projectId}`,
         },
-        (payload) => {
+        (payload: { new: unknown }) => {
           const run = payload.new as
             | {
                 status?: AnalysisRunStatus;

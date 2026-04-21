@@ -39,6 +39,29 @@ export type ImageGenerationRun = {
   updated_at: string;
 };
 
+export type PromptRebuildRun = {
+  id: string;
+  project_id: string;
+  slot: string;
+  status: "queued" | "running" | "completed" | "failed";
+  stage:
+    | "queued"
+    | "analyzing_reference"
+    | "rebuilding_prompt"
+    | "completed"
+    | "failed";
+  progress: number;
+  error_message: string | null;
+  result_prompt: string | null;
+  canonical_prompt_en: string | null;
+  mismatch_notes: string | null;
+  match_score: number | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ActionResponse = {
   error?: string;
 };

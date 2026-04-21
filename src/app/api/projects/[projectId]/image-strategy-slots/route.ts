@@ -16,6 +16,7 @@ type ImageStrategySlotPayload = {
   complianceNotes?: string;
   promptText?: string;
   sourceBriefSlot?: string | null;
+  referenceImageId?: string | null;
 };
 
 type RequestPayload = {
@@ -33,6 +34,20 @@ function sanitizeText(value: unknown) {
 function sanitizeNullableText(value: unknown) {
   const nextValue = sanitizeText(value);
   return nextValue.length > 0 ? nextValue : null;
+}
+
+function sanitizeNullableUuid(value: unknown) {
+  const nextValue = sanitizeNullableText(value);
+
+  if (!nextValue) {
+    return null;
+  }
+
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    nextValue,
+  )
+    ? nextValue
+    : null;
 }
 
 export async function POST(
@@ -88,6 +103,7 @@ export async function POST(
         compliance_notes: sanitizeText(slot.complianceNotes),
         prompt_text: sanitizeText(slot.promptText),
         source_brief_slot: sanitizeNullableText(slot.sourceBriefSlot),
+        reference_image_id: sanitizeNullableUuid(slot.referenceImageId),
       };
     });
 
@@ -97,7 +113,7 @@ export async function POST(
         onConflict: "project_id,slot_key",
       })
       .select(
-        "id, project_id, slot_key, order_index, section, title, purpose, conversion_goal, recommended_overlay_copy, evidence, visual_direction, compliance_notes, prompt_text, source_brief_slot, created_at, updated_at",
+        "id, project_id, slot_key, order_index, section, title, purpose, conversion_goal, recommended_overlay_copy, evidence, visual_direction, compliance_notes, prompt_text, source_brief_slot, reference_image_id, created_at, updated_at",
       )
       .order("order_index", { ascending: true });
 

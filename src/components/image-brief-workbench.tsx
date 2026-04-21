@@ -14,6 +14,7 @@ import type {
   ImageAsset,
   ImageGenerationRun,
   ImageModelOption,
+  PromptRebuildRun,
   ProductOption,
   ProductReferenceImage,
   SlotDraftFields,
@@ -50,6 +51,7 @@ export function ImageBriefWorkbench({
   strategy,
   assets,
   generationRuns,
+  promptRebuildRuns,
   savedSlots,
   defaultImageProvider,
   defaultImageModel,
@@ -62,6 +64,7 @@ export function ImageBriefWorkbench({
   strategy: ImageStrategyInput | undefined;
   assets: ImageAsset[];
   generationRuns: ImageGenerationRun[];
+  promptRebuildRuns: PromptRebuildRun[];
   savedSlots: PersistedImageStrategySlot[];
   defaultImageProvider: "openai" | "gemini";
   defaultImageModel: string;
@@ -80,8 +83,10 @@ export function ImageBriefWorkbench({
   const [slotDrafts, setSlotDrafts] = useState<Record<string, SlotDraftFields>>({});
   const [promptOverrides, setPromptOverrides] = useState<Record<string, string>>({});
   const [promptDeltas, setPromptDeltas] = useState<Record<string, string>>({});
+  const [slotReferenceBindings, setSlotReferenceBindings] = useState<Record<string, string | null>>({});
   const [selectedModelBySlot, setSelectedModelBySlot] = useState<Record<string, string>>({});
   const [runStateBySlot, setRunStateBySlot] = useState<Record<string, ImageGenerationRun>>({});
+  const [promptRunStateBySlot, setPromptRunStateBySlot] = useState<Record<string, PromptRebuildRun>>({});
   const [rebuildingPromptSlotId, setRebuildingPromptSlotId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -132,6 +137,20 @@ export function ImageBriefWorkbench({
   }, [defaultImageModelOptionId, strategySlots]);
 
   useEffect(() => {
+    setSlotReferenceBindings((current) => {
+      const next = { ...current };
+
+      for (const slot of strategySlots) {
+        if (typeof next[slot.id] === "undefined") {
+          next[slot.id] = slot.referenceImageId ?? null;
+        }
+      }
+
+      return next;
+    });
+  }, [strategySlots]);
+
+  useEffect(() => {
     const nextRuns = generationRuns.reduce<Record<string, ImageGenerationRun>>((accumulator, run) => {
       if (!accumulator[run.slot]) {
         accumulator[run.slot] = run;
@@ -142,6 +161,21 @@ export function ImageBriefWorkbench({
 
     setRunStateBySlot(nextRuns);
   }, [generationRuns]);
+
+  useEffect(() => {
+    const nextRuns = promptRebuildRuns.reduce<Record<string, PromptRebuildRun>>(
+      (accumulator, run) => {
+        if (!accumulator[run.slot]) {
+          accumulator[run.slot] = run;
+        }
+
+        return accumulator;
+      },
+      {},
+    );
+
+    setPromptRunStateBySlot(nextRuns);
+  }, [promptRebuildRuns]);
 
   const assetsBySlot = useMemo(() => {
     const mapping = new Map<string, ImageAsset[]>();
@@ -227,7 +261,7 @@ export function ImageBriefWorkbench({
           table: "image_generation_runs",
           filter: `project_id=eq.${projectId}`,
         },
-        (payload) => {
+        (payload: { new: unknown }) => {
           const run = payload.new as ImageGenerationRun | undefined;
 
           if (!run?.slot) {
@@ -250,6 +284,66 @@ export function ImageBriefWorkbench({
       void supabase.removeChannel(channel);
     };
   }, [projectId, router]);
+
+  useEffect(() => {
+    const supabase = createBrowserSupabaseClient();
+    const channel = supabase
+      .channel(`prompt-rebuild-runs:${projectId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "prompt_rebuild_runs",
+          filter: `project_id=eq.${projectId}`,
+        },
+        (payload: { new: unknown }) => {
+          const run = payload.new as PromptRebuildRun | undefined;
+
+          if (!run?.slot) {
+            return;
+          }
+
+          setPromptRunStateBySlot((current) => ({
+            ...current,
+            [run.slot]: run,
+          }));
+
+          if (run.status === "completed" && run.result_prompt) {
+            setPromptOverrides((current) => ({
+              ...current,
+              [run.slot]: run.result_prompt || current[run.slot] || "",
+            }));
+
+            const slot = strategySlots.find((item) => item.id === run.slot);
+            const suffix =
+              typeof run.match_score === "number"
+                ? `（槽位匹配度 ${run.match_score}/100）`
+                : "";
+            setMessage(
+              `${slot?.title ?? "该槽位"} 的 Prompt 已重建${suffix}${
+                run.canonical_prompt_en ? "，已生成执行基准。" : ""
+              }。`,
+            );
+            setRebuildingPromptSlotId((current) =>
+              current === run.slot ? null : current,
+            );
+          }
+
+          if (run.status === "failed") {
+            setError(run.error_message || "重建提示词失败。");
+            setRebuildingPromptSlotId((current) =>
+              current === run.slot ? null : current,
+            );
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [projectId, strategySlots]);
 
   function getSlotDraft(slotId: string, slot: ImageStrategySlotPlan) {
     return (
@@ -348,6 +442,11 @@ export function ImageBriefWorkbench({
 
     const draft = getSlotDraft(slot.id, slot);
 
+    const fallbackReferenceImageId =
+      targetProduct
+        ? (referenceImagesByProduct.get(targetProduct.id) ?? [])[slot.order - 1]?.id ?? null
+        : null;
+
     return {
       slotKey: slot.id,
       order: slot.order,
@@ -361,6 +460,7 @@ export function ImageBriefWorkbench({
       complianceNotes: slot.complianceNotes,
       promptText: getPromptValue(slot),
       sourceBriefSlot: slot.sourceBriefSlot,
+      referenceImageId: slotReferenceBindings[slot.id] ?? fallbackReferenceImageId,
     };
   }
 
@@ -723,32 +823,55 @@ export function ImageBriefWorkbench({
             complianceNotes: slot.complianceNotes,
             currentPrompt,
             referenceImageUrl: slotReferenceImageUrl,
+            language: "zh-CN",
           }),
         },
       );
 
       const payload = (await response.json().catch(() => ({}))) as ActionResponse & {
-        prompt?: string;
-        matchScore?: number | null;
-        mismatchNotes?: string;
+        runId?: string;
+        runStatus?: PromptRebuildRun["status"];
+        runStage?: PromptRebuildRun["stage"];
+        runProgress?: number;
+        deduplicated?: boolean;
       };
 
-      if (!response.ok || !payload.prompt) {
+      if (payload.runId && payload.runStatus) {
+        setPromptRunStateBySlot((current) => ({
+          ...current,
+          [slot.id]: {
+            ...(current[slot.id] ?? {
+              project_id: projectId,
+              slot: slot.id,
+              error_message: null,
+              result_prompt: null,
+              canonical_prompt_en: null,
+              mismatch_notes: null,
+              match_score: null,
+              started_at: null,
+              completed_at: null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }),
+            id: payload.runId,
+            status: payload.runStatus,
+            stage: payload.runStage ?? "queued",
+            progress: payload.runProgress ?? 0,
+          } as PromptRebuildRun,
+        }));
+      }
+
+      if (!response.ok) {
         throw new Error(payload.error ?? "重建提示词失败。");
       }
 
-      setPromptOverrides((current) => ({
-        ...current,
-        [slot.id]: payload.prompt || currentPrompt,
-      }));
-      const suffix =
-        typeof payload.matchScore === "number"
-          ? `（槽位匹配度 ${payload.matchScore}/100）`
-          : "";
-      setMessage(`${slot.title} 的 Prompt 已重建${suffix}。`);
+      setMessage(
+        payload.deduplicated
+          ? `${slot.title} 已有后台 Prompt 重建任务在进行中。`
+          : `${slot.title} 已加入后台 Prompt 重建队列。`,
+      );
     } catch (rebuildError) {
       setError(rebuildError instanceof Error ? rebuildError.message : "重建提示词失败。");
-    } finally {
       setRebuildingPromptSlotId(null);
     }
   }
@@ -877,7 +1000,11 @@ export function ImageBriefWorkbench({
                 runStateBySlot[slot.id]?.status === "queued" ||
                 runStateBySlot[slot.id]?.status === "running"
               }
-              isRebuildingPrompt={rebuildingPromptSlotId === slot.id}
+              isRebuildingPrompt={
+                rebuildingPromptSlotId === slot.id ||
+                promptRunStateBySlot[slot.id]?.status === "queued" ||
+                promptRunStateBySlot[slot.id]?.status === "running"
+              }
               key={slot.id}
               modelOptions={IMAGE_MODEL_OPTIONS}
               onDeleteAsset={(asset) =>
@@ -928,13 +1055,26 @@ export function ImageBriefWorkbench({
               }
               onRebuildPrompt={() => handleRebuildPrompt(slot)}
               promptValue={getPromptValue(slot)}
+              promptRebuildRun={promptRunStateBySlot[slot.id] ?? null}
               promptDeltaValue={getPromptDelta(slot.id)}
               selectedModelId={selectedModelBySlot[slot.id] ?? defaultImageModelOptionId}
-              slotReferenceImage={
-                targetProduct
-                  ? (referenceImagesByProduct.get(targetProduct.id) ?? [])[slot.order - 1] ?? null
-                  : null
-              }
+              slotReferenceImage={(() => {
+                if (!targetProduct) {
+                  return null;
+                }
+
+                const targetImages = referenceImagesByProduct.get(targetProduct.id) ?? [];
+                const boundReferenceId = slotReferenceBindings[slot.id] ?? slot.referenceImageId ?? null;
+
+                if (boundReferenceId) {
+                  const boundImage = targetImages.find((image) => image.id === boundReferenceId);
+                  if (boundImage) {
+                    return boundImage;
+                  }
+                }
+
+                return targetImages[slot.order - 1] ?? null;
+              })()}
               slot={slot}
               generationRun={runStateBySlot[slot.id] ?? null}
               slotAssets={resolveSlotAssets(slot.id, slot.sourceBriefSlot)}

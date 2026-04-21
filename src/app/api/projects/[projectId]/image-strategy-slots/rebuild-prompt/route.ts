@@ -1,8 +1,13 @@
+import { tasks } from "@trigger.dev/sdk";
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
 
 import { assertProjectOwnership, ProjectAccessError } from "@/lib/project-access";
-import { resolveProjectApiKey } from "@/lib/user-api-keys";
+import { createAdminSupabaseClient } from "@/lib/supabase/server";
+import type { rebuildImageSlotPromptTask } from "@/trigger/rebuild-image-slot-prompt-task";
+
+export const runtime = "nodejs";
+
+const STALE_PROMPT_REBUILD_RUN_MS = 10 * 60 * 1000;
 
 type RebuildPromptPayload = {
   slotKey?: string;
@@ -15,6 +20,8 @@ type RebuildPromptPayload = {
   complianceNotes?: string;
   currentPrompt?: string;
   referenceImageUrl?: string;
+  language?: string;
+  force?: boolean;
 };
 
 function sanitizeText(value: unknown) {
@@ -25,47 +32,26 @@ function sanitizeText(value: unknown) {
   return value.trim();
 }
 
-function requireOpenAiEnv(name: string) {
-  const value = process.env[name];
-
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
+function isStaleRun(timestamp: string | null | undefined) {
+  if (!timestamp) {
+    return false;
   }
 
-  return value;
-}
+  const value = new Date(timestamp).getTime();
 
-function enforceEditOnlyPrompt(prompt: string) {
-  if (!prompt) {
-    return prompt;
+  if (Number.isNaN(value)) {
+    return false;
   }
 
-  const bannedPatterns = [
-    /请更换[图片图像素材]*/g,
-    /请重新拍摄/g,
-    /重新拍摄/g,
-    /重拍/g,
-    /更换图片/g,
-    /更换素材/g,
-    /replace the image/gi,
-    /reshoot/gi,
-    /retake/gi,
-    /capture a new photo/gi,
-  ];
-
-  let next = prompt;
-
-  for (const pattern of bannedPatterns) {
-    next = next.replace(pattern, "请基于现有图片优化");
-  }
-
-  return next;
+  return Date.now() - value > STALE_PROMPT_REBUILD_RUN_MS;
 }
 
 export async function POST(
   request: Request,
   context: { params: Promise<{ projectId: string }> },
 ) {
+  const supabase = createAdminSupabaseClient();
+
   try {
     const { projectId } = await context.params;
     await assertProjectOwnership(projectId);
@@ -85,98 +71,145 @@ export async function POST(
     const complianceNotes = sanitizeText(body.complianceNotes);
     const currentPrompt = sanitizeText(body.currentPrompt);
     const referenceImageUrl = sanitizeText(body.referenceImageUrl);
+    const language = sanitizeText(body.language) || "zh-CN";
+    const force = Boolean(body.force);
 
     if (!slotKey) {
       return NextResponse.json({ error: "slotKey is required." }, { status: 400 });
     }
 
-    const apiKey =
-      (await resolveProjectApiKey(projectId, "openai")) ??
-      requireOpenAiEnv("OPENAI_API_KEY");
-    const client = new OpenAI({ apiKey });
+    const { data: activeRun, error: activeRunError } = await supabase
+      .from("prompt_rebuild_runs")
+      .select("id, status, stage, progress, created_at, started_at")
+      .eq("project_id", projectId)
+      .eq("slot", slotKey)
+      .in("status", ["queued", "running"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    const completion = await client.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-5-mini",
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: [
-            "你是亚马逊商品图提示词重建器（含槽位匹配判断）。",
-            "任务：先判断“当前参考图是否匹配目标槽位”，再重建可直接用于生图的最终 Prompt。",
-            "要求：",
-            "1) 修复语法、标点、中英混杂和病句；",
-            "2) 不改变原始业务意图和合规约束；",
-            "3) 保留结构化段落（Purpose / Conversion Goal / VOC / Visual Direction / Compliance）；",
-            "4) 如果参考图与槽位职责不匹配，输出纠偏式 Prompt（强调在当前图上该改什么）；",
-            "5) 严禁建议用户更换图片、重新拍摄、重拍、替换素材。",
-            "6) 你必须假设输入图片就是用户当前线上可用素材，只能给编辑优化指令。",
-            "5) 输出 JSON，格式：{\"match_score\":0-100,\"mismatch_notes\":\"...\",\"prompt\":\"...\"}",
-          ].join("\n"),
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: [
-                `slotKey: ${slotKey}`,
-                `slotTitle: ${slotTitle || "unknown"}`,
-                "",
-                "策略输入：",
-                `Purpose: ${purpose || "-"}`,
-                `Conversion Goal: ${conversionGoal || "-"}`,
-                `Recommended On-Image Copy: ${recommendedOverlayCopy || "-"}`,
-                `VOC / Evidence: ${evidence || "-"}`,
-                `Visual Direction: ${visualDirection || "-"}`,
-                `Compliance Notes: ${complianceNotes || "-"}`,
-                "",
-                "当前Prompt（仅供参考，不要照抄错误）：",
-                currentPrompt || "-",
-              ].join("\n"),
-            },
-            ...(referenceImageUrl
-              ? [
-                  {
-                    type: "image_url",
-                    image_url: {
-                      url: referenceImageUrl,
-                    },
-                  },
-                ]
-              : []),
-          ],
-        },
-      ],
-    });
+    if (activeRunError) {
+      if (activeRunError.code === "42P01") {
+        return NextResponse.json(
+          {
+            error:
+              "数据库结构尚未更新，请先执行 `supabase db push`（缺少 prompt_rebuild_runs）。",
+          },
+          { status: 500 },
+        );
+      }
 
-    const rawContent = completion.choices[0]?.message?.content?.trim() || "";
-    let parsed: { match_score?: number; mismatch_notes?: string; prompt?: string } = {};
-
-    try {
-      parsed = JSON.parse(rawContent) as typeof parsed;
-    } catch {
-      parsed = {
-        prompt: rawContent,
-      };
+      throw new Error(activeRunError.message);
     }
 
-    const rebuiltPrompt = enforceEditOnlyPrompt(sanitizeText(parsed.prompt));
-    const matchScore =
-      typeof parsed.match_score === "number" && Number.isFinite(parsed.match_score)
-        ? Math.max(0, Math.min(100, Math.round(parsed.match_score)))
-        : null;
-    const mismatchNotes = sanitizeText(parsed.mismatch_notes);
+    if (
+      activeRun &&
+      !force &&
+      !isStaleRun(activeRun.started_at ?? activeRun.created_at)
+    ) {
+      return NextResponse.json({
+        ok: true,
+        runId: activeRun.id,
+        runStatus: activeRun.status,
+        runStage: activeRun.stage,
+        runProgress: activeRun.progress,
+        deduplicated: true,
+      });
+    }
 
-    if (!rebuiltPrompt) {
-      throw new Error("模型未返回可用提示词。");
+    if (activeRun) {
+      await supabase
+        .from("prompt_rebuild_runs")
+        .update({
+          status: "failed",
+          stage: "failed",
+          progress: 100,
+          completed_at: new Date().toISOString(),
+          error_message: force
+            ? "已由用户手动终止这条卡住任务，并重新发起重建。"
+            : "任务长时间未完成，系统已自动标记为失败，请重新重建。",
+        })
+        .eq("id", activeRun.id);
+    }
+
+    const { data: run, error: runError } = await supabase
+      .from("prompt_rebuild_runs")
+      .insert({
+        project_id: projectId,
+        slot: slotKey,
+        status: "queued",
+        stage: "queued",
+        progress: 0,
+        started_at: null,
+        completed_at: null,
+        error_message: null,
+      })
+      .select("id, status, stage, progress")
+      .single();
+
+    if (runError || !run) {
+      if (runError?.code === "42P01") {
+        return NextResponse.json(
+          {
+            error:
+              "数据库结构尚未更新，请先执行 `supabase db push`（缺少 prompt_rebuild_runs）。",
+          },
+          { status: 500 },
+        );
+      }
+
+      throw new Error(runError?.message ?? "Failed to create prompt rebuild run.");
+    }
+
+    if (!process.env.TRIGGER_SECRET_KEY) {
+      throw new Error(
+        "Missing TRIGGER_SECRET_KEY. Please configure Trigger.dev environment variables first.",
+      );
+    }
+
+    try {
+      await tasks.trigger<typeof rebuildImageSlotPromptTask>("rebuild-image-slot-prompt", {
+        projectId,
+        runId: run.id,
+        rebuild: {
+          slotKey,
+          slotTitle,
+          purpose,
+          conversionGoal,
+          recommendedOverlayCopy,
+          evidence,
+          visualDirection,
+          complianceNotes,
+          currentPrompt,
+          referenceImageUrl,
+          language,
+        },
+      });
+    } catch (triggerError) {
+      await supabase
+        .from("prompt_rebuild_runs")
+        .update({
+          status: "failed",
+          stage: "failed",
+          progress: 100,
+          completed_at: new Date().toISOString(),
+          error_message:
+            triggerError instanceof Error
+              ? triggerError.message
+              : "Failed to enqueue Trigger.dev task",
+        })
+        .eq("id", run.id);
+
+      throw triggerError;
     }
 
     return NextResponse.json({
-      prompt: rebuiltPrompt,
-      matchScore,
-      mismatchNotes,
+      ok: true,
+      runId: run.id,
+      runStatus: run.status,
+      runStage: run.stage,
+      runProgress: run.progress,
+      deduplicated: false,
     });
   } catch (error) {
     if (error instanceof ProjectAccessError) {
@@ -187,7 +220,7 @@ export async function POST(
       {
         error: error instanceof Error ? error.message : "重建提示词失败。",
       },
-      { status: 500 },
+      { status: 400 },
     );
   }
 }

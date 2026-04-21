@@ -43,8 +43,20 @@ type ReferenceCandidate = {
   id: string;
   fileName: string;
   imageUrl: string;
+  createdAt: string;
   referenceKind: string;
   pinnedForMain: boolean;
+};
+
+const SLOT_ORDER_MAP: Record<string, number> = {
+  main_image: 1,
+  core_value: 2,
+  primary_lifestyle: 3,
+  secondary_lifestyle: 4,
+  feature_proof: 5,
+  material_detail: 6,
+  dimensions_fit: 7,
+  objection_closer: 8,
 };
 
 function requireEnv(name: string) {
@@ -395,6 +407,7 @@ export async function executeImageGenerationForSlot({
   const [
     { data: project, error: projectError },
     { data: latestReport, error: reportError },
+    { data: slotStrategy, error: slotStrategyError },
     { data: targetReferenceImages, error: targetReferenceError },
     { data: allReferenceImages, error: allReferenceImagesError },
     { data: identityProfile, error: identityProfileError },
@@ -409,8 +422,14 @@ export async function executeImageGenerationForSlot({
       .limit(1)
       .maybeSingle(),
     supabase
+      .from("image_strategy_slots")
+      .select("reference_image_id")
+      .eq("project_id", projectId)
+      .eq("slot_key", slot)
+      .maybeSingle(),
+    supabase
       .from("product_reference_images")
-      .select("id, file_name, image_url, reference_kind, pinned_for_main")
+      .select("id, file_name, image_url, reference_kind, pinned_for_main, created_at")
       .eq("project_id", projectId)
       .eq("role", "target")
       .order("created_at", { ascending: false })
@@ -442,6 +461,10 @@ export async function executeImageGenerationForSlot({
 
   if (reportError) {
     throw new Error(reportError.message);
+  }
+
+  if (slotStrategyError && slotStrategyError.code !== "42P01") {
+    throw new Error(slotStrategyError.message);
   }
 
   if (targetProductError) {
@@ -534,6 +557,8 @@ export async function executeImageGenerationForSlot({
         project_product_id: string;
         role: string;
         file_hash: string;
+        file_name: string;
+        image_url: string;
         reference_kind: string | null;
         pinned_for_main: boolean | null;
       } =>
@@ -551,6 +576,7 @@ export async function executeImageGenerationForSlot({
       image_url: string;
       reference_kind: string | null;
       pinned_for_main: boolean | null;
+      created_at: string | null;
     } =>
       typeof image.image_url === "string" &&
       image.image_url.length > 0 &&
@@ -717,6 +743,7 @@ export async function executeImageGenerationForSlot({
           id: image.id,
           fileName: image.file_name,
           imageUrl: image.image_url,
+          createdAt: image.created_at ?? "",
           referenceKind: image.reference_kind || "untyped",
           pinnedForMain: image.pinned_for_main === true,
         }))
@@ -724,6 +751,7 @@ export async function executeImageGenerationForSlot({
           id: `${image.project_product_id}:${image.file_hash}`,
           fileName: image.file_name,
           imageUrl: image.image_url,
+          createdAt: "",
           referenceKind: image.reference_kind || "competitor_inspiration",
           pinnedForMain: false,
         }))
@@ -731,11 +759,32 @@ export async function executeImageGenerationForSlot({
     id: image.id,
     fileName: image.fileName,
     imageUrl: image.imageUrl,
+    createdAt: image.createdAt,
     referenceKind: image.referenceKind,
     pinnedForMain: image.pinnedForMain,
   }));
 
   const rankedReferenceCandidates = rankReferenceCandidatesForSlot(slot, referenceCandidates);
+
+  const slotOrder = SLOT_ORDER_MAP[slot] ?? 1;
+  const designatedReferenceFromBinding =
+    generationMode === "precise" && slotStrategy?.reference_image_id
+      ? referenceCandidates.find((candidate) => candidate.id === slotStrategy.reference_image_id) ?? null
+      : null;
+  const targetReferencesForSlotOrder =
+    generationMode === "precise"
+      ? [...referenceCandidates].sort((left, right) => {
+          if (left.pinnedForMain !== right.pinnedForMain) {
+            return left.pinnedForMain ? -1 : 1;
+          }
+
+          return right.createdAt.localeCompare(left.createdAt);
+        })
+      : [];
+  const designatedSlotReference =
+    generationMode === "precise"
+      ? designatedReferenceFromBinding ?? targetReferencesForSlotOrder[slotOrder - 1] ?? null
+      : null;
 
   const selectedReferences = await selectReferenceImagesForEdit({
     client: openai,
@@ -767,14 +816,30 @@ export async function executeImageGenerationForSlot({
     slot === "main_image"
       ? rankedReferenceCandidates.filter((image) => image.pinnedForMain)
       : [];
-  const editReferenceImages = mergeUniqueReferenceCandidates(
-    [
-      pinnedMainReferences,
-      selectedReferenceFiles,
-      rankedReferenceCandidates,
-    ],
-    5,
-  );
+  const strictAnchoredReferences =
+    generationMode === "precise" && designatedSlotReference
+      ? mergeUniqueReferenceCandidates(
+          [
+            [designatedSlotReference],
+            pinnedMainReferences.filter((image) => image.id !== designatedSlotReference.id),
+            selectedReferenceFiles.filter((image) => image.id !== designatedSlotReference.id),
+            rankedReferenceCandidates.filter((image) => image.id !== designatedSlotReference.id),
+          ],
+          2,
+        )
+      : [];
+  const editReferenceImages =
+    strictAnchoredReferences.length > 0
+      ? strictAnchoredReferences
+      : mergeUniqueReferenceCandidates(
+          [
+            designatedSlotReference ? [designatedSlotReference] : [],
+            pinnedMainReferences,
+            selectedReferenceFiles,
+            rankedReferenceCandidates,
+          ],
+          5,
+        );
 
   if (editReferenceImages.length === 0) {
     throw new Error(
@@ -791,6 +856,15 @@ export async function executeImageGenerationForSlot({
           "Prefer changing background treatment and overall composition.",
           "Avoid repeating the same environment, camera framing, furniture layout, props, or backdrop styling when possible.",
           "Keep the slot goal and any user refinements, but change the scene execution enough to feel like a distinct option.",
+        ]
+      : [];
+  const designatedSlotAnchorInstructions =
+    designatedSlotReference && generationMode === "precise"
+      ? [
+          "Primary slot anchor:",
+          `Use "${designatedSlotReference.fileName}" as the primary visual anchor for this slot.`,
+          "Do not drift to unrelated composition patterns from other references.",
+          "Keep the product structure and key features aligned with the primary slot anchor.",
         ]
       : [];
   const baseAnchorInstructions =
@@ -817,6 +891,7 @@ export async function executeImageGenerationForSlot({
           "Do not replicate a specific branded product or imply an exact verified product identity.",
           "Create a concept draft for the same broad product category, optimized for the slot goal.",
           `Product context: ${targetProduct?.name || "unknown product"}.`,
+          ...designatedSlotAnchorInstructions,
           ...variationInstructions,
           ...baseAnchorInstructions,
           ...promptDeltaInstructions,
@@ -847,6 +922,7 @@ export async function executeImageGenerationForSlot({
               ? effectiveIdentityProfile?.must_not_change.join("; ")
               : ""
           }.`,
+          ...designatedSlotAnchorInstructions,
           ...baseAnchorInstructions,
           ...variationInstructions,
           ...promptDeltaInstructions,
@@ -875,6 +951,7 @@ export async function executeImageGenerationForSlot({
               ? effectiveIdentityProfile?.must_not_change.join("; ")
               : ""
           }.`,
+          ...designatedSlotAnchorInstructions,
           ...baseAnchorInstructions,
           ...variationInstructions,
           ...promptDeltaInstructions,

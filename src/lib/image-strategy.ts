@@ -36,6 +36,7 @@ export type ImageStrategySlotPlan = {
   visualDirection: string;
   complianceNotes: string;
   sourceBriefSlot: string | null;
+  referenceImageId?: string | null;
   defaultPrompt: string;
 };
 
@@ -54,6 +55,7 @@ export type PersistedImageStrategySlot = {
   compliance_notes: string;
   prompt_text: string;
   source_brief_slot: string | null;
+  reference_image_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -409,6 +411,7 @@ export function mergePersistedImageStrategySlots({
       complianceNotes:
         cleanText(persisted.compliance_notes) || slot.complianceNotes,
       sourceBriefSlot: persisted.source_brief_slot || slot.sourceBriefSlot,
+      referenceImageId: persisted.reference_image_id || null,
       defaultPrompt: cleanText(persisted.prompt_text) || slot.defaultPrompt,
     };
   });

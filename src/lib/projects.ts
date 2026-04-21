@@ -131,6 +131,7 @@ export async function getProjectPageData(projectId: string, userId: string) {
     { data: listingSnapshots, error: listingSnapshotsError },
     { data: imageAssets, error: imageAssetsError },
     { data: imageGenerationRuns, error: imageGenerationRunsError },
+    { data: promptRebuildRuns, error: promptRebuildRunsError },
     { data: imageStrategySlots, error: imageStrategySlotsError },
     { data: referenceImages, error: referenceImagesError },
     { data: productIdentityProfile, error: productIdentityProfileError },
@@ -186,9 +187,16 @@ export async function getProjectPageData(projectId: string, userId: string) {
         .eq("project_id", projectId)
         .order("created_at", { ascending: false }),
       supabase
+        .from("prompt_rebuild_runs")
+        .select(
+          "id, project_id, slot, status, stage, progress, error_message, result_prompt, canonical_prompt_en, mismatch_notes, match_score, started_at, completed_at, created_at, updated_at",
+        )
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: false }),
+      supabase
         .from("image_strategy_slots")
         .select(
-          "id, project_id, slot_key, order_index, section, title, purpose, conversion_goal, recommended_overlay_copy, evidence, visual_direction, compliance_notes, prompt_text, source_brief_slot, created_at, updated_at",
+          "id, project_id, slot_key, order_index, section, title, purpose, conversion_goal, recommended_overlay_copy, evidence, visual_direction, compliance_notes, prompt_text, source_brief_slot, reference_image_id, created_at, updated_at",
         )
         .eq("project_id", projectId)
         .order("order_index", { ascending: true }),
@@ -234,6 +242,10 @@ export async function getProjectPageData(projectId: string, userId: string) {
 
   if (imageGenerationRunsError && imageGenerationRunsError.code !== "42P01") {
     throw new Error(imageGenerationRunsError.message);
+  }
+
+  if (promptRebuildRunsError && promptRebuildRunsError.code !== "42P01") {
+    throw new Error(promptRebuildRunsError.message);
   }
 
   if (imageStrategySlotsError && imageStrategySlotsError.code !== "42P01") {
@@ -306,6 +318,8 @@ export async function getProjectPageData(projectId: string, userId: string) {
     imageAssets: imageAssets ?? [],
     imageGenerationRuns:
       imageGenerationRunsError?.code === "42P01" ? [] : imageGenerationRuns ?? [],
+    promptRebuildRuns:
+      promptRebuildRunsError?.code === "42P01" ? [] : promptRebuildRuns ?? [],
     imageStrategySlots:
       imageStrategySlotsError?.code === "42P01" ? [] : imageStrategySlots ?? [],
     referenceImages: referenceImages ?? [],

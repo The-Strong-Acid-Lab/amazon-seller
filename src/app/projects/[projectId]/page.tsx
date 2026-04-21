@@ -475,6 +475,7 @@ export default async function ProjectPage({
                       defaultImageModel={getConfiguredImageModelName()}
                       defaultImageProvider={getImageGenerationProvider()}
                       generationRuns={data.imageGenerationRuns}
+                      promptRebuildRuns={data.promptRebuildRuns}
                       projectId={data.project.id}
                       referenceImages={data.referenceImages}
                       savedSlots={data.imageStrategySlots}

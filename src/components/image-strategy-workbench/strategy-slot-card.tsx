@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Eye } from "lucide-react";
 
-import { ImageLightbox } from "@/components/image-lightbox";
 import { Button } from "@/components/ui/button";
 import {
   Accordion,
@@ -30,9 +29,11 @@ import type {
   ImageAsset,
   ImageGenerationRun,
   ImageModelOption,
+  PromptRebuildRun,
   ProductReferenceImage,
   SlotDraftFields,
 } from "@/components/image-strategy-workbench/types";
+import { formatDateTime } from "@/components/image-strategy-workbench/types";
 import type { ImageStrategySlotPlan } from "@/lib/image-strategy";
 
 export function StrategySlotCard({
@@ -43,6 +44,7 @@ export function StrategySlotCard({
   isRebuildingPrompt,
   canGenerate,
   generationRun,
+  promptRebuildRun,
   promptValue,
   deletingAssetId,
   modelOptions,
@@ -64,6 +66,7 @@ export function StrategySlotCard({
   isRebuildingPrompt: boolean;
   canGenerate: boolean;
   generationRun: ImageGenerationRun | null;
+  promptRebuildRun: PromptRebuildRun | null;
   promptValue: string;
   deletingAssetId: string | null;
   modelOptions: ImageModelOption[];
@@ -81,11 +84,9 @@ export function StrategySlotCard({
   const hasConsistencyWarning =
     generationRun?.error_message?.startsWith("商品一致性提醒");
   const latestAsset = slotAssets[0] ?? null;
-  const [selectedHistoryAssetId, setSelectedHistoryAssetId] = useState<
-    string | null
-  >(null);
-  const selectedHistoryAsset = selectedHistoryAssetId
-    ? (slotAssets.find((asset) => asset.id === selectedHistoryAssetId) ?? null)
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const selectedAsset = selectedAssetId
+    ? (slotAssets.find((asset) => asset.id === selectedAssetId) ?? null)
     : null;
 
   return (
@@ -205,6 +206,31 @@ export function StrategySlotCard({
           <p className="text-sm text-stone-600">
             这里只保留最终生图指令，避免和分析过程信息重复。
           </p>
+          {promptRebuildRun ? (
+            <div className="grid w-full gap-1">
+              <div className="flex items-center justify-between gap-2 text-[11px] text-stone-500">
+                <span>
+                  {promptRebuildRun.status === "queued"
+                    ? "queued"
+                    : promptRebuildRun.status === "running"
+                      ? promptRebuildRun.stage
+                      : promptRebuildRun.status}
+                </span>
+                <span>{promptRebuildRun.progress}%</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone-200">
+                <div
+                  className="h-full rounded-full bg-stone-900 transition-all"
+                  style={{ width: `${promptRebuildRun.progress}%` }}
+                />
+              </div>
+              {promptRebuildRun.error_message ? (
+                <p className="text-xs text-rose-700">
+                  {promptRebuildRun.error_message}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <Textarea
             className="h-full min-h-0 flex-1 resize-none overflow-y-auto bg-white font-mono text-xs leading-6"
             onChange={(event) => onPromptChange(event.target.value)}
@@ -232,11 +258,10 @@ export function StrategySlotCard({
             </div>
             {slotReferenceImage?.image_url ? (
               <div className="min-h-0 flex-1 overflow-hidden rounded-xl">
-                <ImageLightbox
+                <img
                   alt={`${slot.title} my reference #${slot.order}`}
-                  caption={`${slot.title} · 我的素材 #${slot.order}`}
+                  className="h-full w-full rounded-xl object-cover"
                   src={slotReferenceImage.image_url}
-                  thumbnailClassName="!aspect-auto !h-full !w-full rounded-xl border-0 object-cover"
                 />
               </div>
             ) : (
@@ -269,12 +294,20 @@ export function StrategySlotCard({
             {latestAsset?.image_url ? (
               <>
                 <div className="min-h-0 flex-1 overflow-hidden rounded-xl">
-                  <ImageLightbox
-                    alt={`${slot.title} v${latestAsset.version}`}
-                    caption={`${slot.title} · v${latestAsset.version}`}
-                    src={latestAsset.image_url}
-                    thumbnailClassName="!aspect-auto !h-full !w-full rounded-xl border-0 object-cover"
-                  />
+                  <button
+                    className="group relative h-full w-full cursor-zoom-in overflow-hidden rounded-xl"
+                    onClick={() => setSelectedAssetId(latestAsset.id)}
+                    type="button"
+                  >
+                    <img
+                      alt={`${slot.title} v${latestAsset.version}`}
+                      className="h-full w-full object-cover"
+                      src={latestAsset.image_url}
+                    />
+                    <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-black/65 px-2 py-1 text-[10px] font-medium text-white">
+                      点击查看
+                    </span>
+                  </button>
                 </div>
                 {latestAsset.error_message ? (
                   <p
@@ -328,7 +361,7 @@ export function StrategySlotCard({
                 <div
                   key={asset.id}
                   className="flex h-20 cursor-pointer items-center justify-between gap-3 rounded-xl bg-stone-100 px-3 py-2 transition-colors hover:bg-stone-200/60"
-                  onClick={() => setSelectedHistoryAssetId(asset.id)}
+                  onClick={() => setSelectedAssetId(asset.id)}
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-stone-200 bg-stone-50">
@@ -448,10 +481,10 @@ export function StrategySlotCard({
         </Accordion>
       </div>
       <Dialog
-        open={Boolean(selectedHistoryAsset)}
+        open={Boolean(selectedAsset)}
         onOpenChange={(open) => {
           if (!open) {
-            setSelectedHistoryAssetId(null);
+            setSelectedAssetId(null);
           }
         }}
       >
@@ -459,20 +492,20 @@ export function StrategySlotCard({
         <DialogContent className="max-w-[min(95vw,1200px)]">
           <DialogHeader>
             <DialogTitle>
-              历史版本详情
-              {selectedHistoryAsset
-                ? ` · v${selectedHistoryAsset.version}`
+              图片详情
+              {selectedAsset
+                ? ` · v${selectedAsset.version}`
                 : ""}
             </DialogTitle>
           </DialogHeader>
-          {selectedHistoryAsset ? (
+          {selectedAsset ? (
             <div className="grid gap-4 md:grid-cols-2">
               <div className="overflow-hidden rounded-xl border border-stone-200 bg-stone-50">
-                {selectedHistoryAsset.image_url ? (
-                  <ImageLightbox
-                    alt={`${slot.title} history v${selectedHistoryAsset.version}`}
-                    caption={`${slot.title} · 历史 v${selectedHistoryAsset.version}`}
-                    src={selectedHistoryAsset.image_url}
+                {selectedAsset.image_url ? (
+                  <img
+                    alt={`${slot.title} v${selectedAsset.version}`}
+                    className="h-full w-full object-cover"
+                    src={selectedAsset.image_url}
                   />
                 ) : (
                   <div className="flex min-h-[320px] items-center justify-center text-sm text-stone-500">
@@ -480,12 +513,20 @@ export function StrategySlotCard({
                   </div>
                 )}
               </div>
-              <div className="max-h-[420px] overflow-y-auto rounded-xl border border-stone-200 bg-stone-50 p-3">
+              <div className="grid max-h-[420px] grid-rows-[auto_auto_minmax(0,1fr)] gap-2 overflow-hidden rounded-xl border border-stone-200 bg-stone-50 p-3">
+                <p className="text-xs text-stone-600">
+                  时间：{formatDateTime(selectedAsset.created_at)}
+                </p>
+                <p className="text-xs text-stone-600">
+                  模型：{selectedAsset.model_name || "unknown"}
+                </p>
+                <div className="overflow-y-auto">
                 <pre className="whitespace-pre-wrap break-words text-xs leading-6 text-stone-800">
-                  {selectedHistoryAsset.prompt_en ||
-                    selectedHistoryAsset.prompt_zh ||
+                  {selectedAsset.prompt_en ||
+                    selectedAsset.prompt_zh ||
                     "无 Prompt"}
                 </pre>
+                </div>
               </div>
             </div>
           ) : null}

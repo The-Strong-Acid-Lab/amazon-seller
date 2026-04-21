@@ -1432,7 +1432,10 @@ export async function regenerateListingDraftForProject(projectId: string) {
     competitorProducts,
   });
 
-  const modelResult = await callOpenAi<ListingDraftOnlyShape>(prompt, projectId);
+  const modelResult = await callLlm<ListingDraftOnlyShape>({
+    messages: prompt,
+    projectId,
+  });
   const listingDraft: ListingDraftShape = {
     title_draft: modelResult.listing_draft?.title_draft ?? "",
     title_rationale: modelResult.listing_draft?.title_rationale ?? "",

@@ -247,7 +247,7 @@ function CompetitorDetailContent({
           table: "competitor_insight_runs",
           filter: `project_product_id=eq.${competitor.id}`,
         },
-        (payload) => {
+        (payload: { new: unknown }) => {
           const run = payload.new as CompetitorInsightRun | undefined;
 
           if (!run?.id) {
