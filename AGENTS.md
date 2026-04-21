@@ -1,3 +1,19 @@
+<!-- BEGIN:project-agent-context -->
+# Project Agent Context
+
+This app is a Next.js 16 Amazon seller image strategy workspace backed by Supabase and Trigger.dev v4. For project-specific architecture, current product decisions, and workflow pitfalls, read `CLAUDE.md` first.
+
+Important local conventions:
+
+- Use `@trigger.dev/sdk` v4 tasks for slow LLM/image work.
+- Add Supabase migrations for DB schema changes.
+- Keep final image-generation prompts structured and English.
+- Keep UI labels/messages in the existing Chinese style where appropriate.
+- Preserve product identity and target reference images as source truth.
+- Run `npm run lint` and `npx tsc --noEmit` after meaningful code changes.
+
+<!-- END:project-agent-context -->
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
