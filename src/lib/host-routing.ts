@@ -19,9 +19,8 @@ export function toRootHostname(hostname: string) {
 }
 
 export function toConsoleHostname(hostname: string) {
-  return hostname.startsWith("console.")
-    ? hostname
-    : `console.${hostname}`;
+  const bare = hostname.replace(/^www\./, "");
+  return bare.startsWith("console.") ? bare : `console.${bare}`;
 }
 
 export function buildRootUrlFromHost(host: string, pathname: string, forwardedProto?: string | null) {
