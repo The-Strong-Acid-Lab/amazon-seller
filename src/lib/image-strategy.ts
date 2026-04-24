@@ -295,9 +295,36 @@ function joinEvidence(parts: Array<string | null | undefined>) {
     .join("；");
 }
 
+const SLOT_COMPLIANCE_EN: Record<ImageStrategySlotId, string> = {
+  main_image:
+    "No marketing copy, no misleading comparison images, no fabricated accessories. Keep background clean and non-distracting.",
+  core_value:
+    "No rendered text in the base image. Do not make exaggerated promises or unsubstantiated claims.",
+  primary_lifestyle:
+    "Keep poses natural and unscripted. No irrelevant decorations. Do not let the scene overpower the product.",
+  secondary_lifestyle:
+    "Avoid repeating the same composition or action from the primary lifestyle image. No duplicate scene treatment.",
+  feature_proof:
+    "Only highlight real, existing structures and functions. Do not fabricate internal components or specifications.",
+  material_detail:
+    "Do not fabricate material texture. Do not misrepresent the product's actual sheen, thickness, or finish.",
+  dimensions_fit:
+    "Size and fit information added later must reflect real specifications. Do not estimate or fabricate dimensions.",
+  objection_closer:
+    "No misleading competitor comparisons. No absolute claims that cannot be substantiated.",
+};
+
+export function getSlotComplianceEn(slotId: string): string {
+  return (
+    SLOT_COMPLIANCE_EN[slotId as ImageStrategySlotId] ||
+    "Keep poses natural, avoid irrelevant decoration, do not let the scene overpower the product, and do not render text in the image."
+  );
+}
+
 export function buildEditableImagePrompt(slot: Omit<ImageStrategySlotPlan, "defaultPrompt">) {
+  const complianceEn = getSlotComplianceEn(slot.id);
   const promptLines = [
-    `${slot.audienceLabel} - ${slot.title}`,
+    slot.audienceLabel,
     "",
     "Purpose",
     slot.purpose,
@@ -318,13 +345,13 @@ export function buildEditableImagePrompt(slot: Omit<ImageStrategySlotPlan, "defa
     "Keep the uploaded product identity stable. Do not change category, silhouette, materials, hardware layout, or core structure.",
     "",
     "Compliance",
-    slot.complianceNotes,
+    complianceEn,
     "",
     "Negative Constraints",
     "No text, no letters, no logo, no watermark, no fabricated accessories, no impossible geometry, no misleading before/after claims.",
     "",
     "Final Visual Prompt",
-    `Create a polished Amazon listing base image for ${slot.title}. The image should serve this purpose: ${slot.purpose} The composition should support this conversion goal: ${slot.conversionGoal} Ground the visual choices in this evidence: ${slot.evidence} Visual direction: ${slot.visualDirection} Keep the real product identity intact and leave room for later layout overlays where appropriate.`,
+    `Create a polished Amazon listing base image for ${slot.audienceLabel}. The image should serve this purpose: ${slot.purpose} The composition should support this conversion goal: ${slot.conversionGoal} Ground the visual choices in this evidence: ${slot.evidence} Visual direction: ${slot.visualDirection} Keep the real product identity intact and leave room for later layout overlays where appropriate.`,
   ];
 
   return promptLines.join("\n");
@@ -343,10 +370,9 @@ export function buildImageStrategySlots({
     const matchedBrief = pickBriefForBlueprint(blueprint, brief, usedBriefIndexes);
     const strategySeed = pickStrategyLine(strategy, blueprint.strategySource);
     const purpose = cleanText(matchedBrief?.goal) || strategySeed || blueprint.fallbackPurpose;
-    const evidence = joinEvidence([
-      matchedBrief?.supporting_proof,
-      strategySeed && strategySeed !== purpose ? strategySeed : "",
-    ]) || "当前先基于 VOC、竞品表达和 listing 线索规划该槽位。";
+    const evidence =
+      cleanText(matchedBrief?.supporting_proof) ||
+      "当前先基于 VOC、竞品表达和 listing 线索规划该槽位。";
     const visualDirection =
       cleanText(matchedBrief?.visual_direction) || blueprint.fallbackVisualDirection;
     const conversionGoal =

@@ -48,17 +48,6 @@ type ReferenceCandidate = {
   pinnedForMain: boolean;
 };
 
-const SLOT_ORDER_MAP: Record<string, number> = {
-  main_image: 1,
-  core_value: 2,
-  primary_lifestyle: 3,
-  secondary_lifestyle: 4,
-  feature_proof: 5,
-  material_detail: 6,
-  dimensions_fit: 7,
-  objection_closer: 8,
-};
-
 function requireEnv(name: string) {
   const value = process.env[name];
 
@@ -174,6 +163,10 @@ function toSafePathSegment(value: string) {
     .slice(0, 40) || "slot";
 }
 
+function containsCjk(value: string) {
+  return /[㐀-鿿]/.test(value);
+}
+
 function buildPrompts({
   slot,
   goal,
@@ -222,7 +215,7 @@ function buildPrompts({
     "Recommended on-image copy (for later layout guidance only; do not render text in the image):",
     recommendedOverlayCopy || "No required overlay copy.",
     "Visual direction:",
-    visualDirection || "Clean, credible, and easy to scan.",
+    (visualDirection && !containsCjk(visualDirection)) ? visualDirection : "Clean, credible, and easy to scan.",
     "Compliance notes:",
     complianceNotes || "No logos, no trademark text, no exaggerated medical claims, no misleading comparisons.",
     "Output one high-quality draft image.",
@@ -766,25 +759,12 @@ export async function executeImageGenerationForSlot({
 
   const rankedReferenceCandidates = rankReferenceCandidatesForSlot(slot, referenceCandidates);
 
-  const slotOrder = SLOT_ORDER_MAP[slot] ?? 1;
   const designatedReferenceFromBinding =
     generationMode === "precise" && slotStrategy?.reference_image_id
       ? referenceCandidates.find((candidate) => candidate.id === slotStrategy.reference_image_id) ?? null
       : null;
-  const targetReferencesForSlotOrder =
-    generationMode === "precise"
-      ? [...referenceCandidates].sort((left, right) => {
-          if (left.pinnedForMain !== right.pinnedForMain) {
-            return left.pinnedForMain ? -1 : 1;
-          }
-
-          return right.createdAt.localeCompare(left.createdAt);
-        })
-      : [];
   const designatedSlotReference =
-    generationMode === "precise"
-      ? designatedReferenceFromBinding ?? targetReferencesForSlotOrder[slotOrder - 1] ?? null
-      : null;
+    generationMode === "precise" ? designatedReferenceFromBinding : null;
 
   const selectedReferences = await selectReferenceImagesForEdit({
     client: openai,
@@ -848,6 +828,30 @@ export async function executeImageGenerationForSlot({
         : "竞品参考图不可用，请重新上传后再生成方案图。",
     );
   }
+  const backgroundInstruction =
+    slot === "primary_lifestyle" || slot === "secondary_lifestyle"
+      ? [
+          "Background instruction:",
+          "Replace the studio or plain background with a realistic, contextually appropriate lifestyle environment.",
+          "The background must feel like a real space (home, office, kitchen, outdoor area, etc.) that matches the visual direction above.",
+          "Never output the product on a white, gray, or plain studio background for this slot.",
+          "The environment should be naturally lit and plausible — not an abstract render.",
+        ]
+      : slot === "main_image"
+      ? [
+          "Background instruction:",
+          "Match the background style of the reference image.",
+          "If the reference image has a real-world background or setting, preserve that background style.",
+          "If the reference image has a plain white or solid-color background, keep it clean and simple.",
+          "Do not force a white background if the reference shows a real environment.",
+        ]
+      : slot === "core_value" || slot === "feature_proof" || slot === "material_detail" || slot === "dimensions_fit" || slot === "objection_closer"
+      ? [
+          "Background instruction:",
+          "Use a clean, neutral background (white, off-white, or very subtle gradient) that lets the product details and any later overlay copy stand out clearly.",
+          "Do not use a busy lifestyle environment for this slot.",
+        ]
+      : [];
   const variationInstructions =
     version > 1
       ? [
@@ -891,6 +895,7 @@ export async function executeImageGenerationForSlot({
           "Do not replicate a specific branded product or imply an exact verified product identity.",
           "Create a concept draft for the same broad product category, optimized for the slot goal.",
           `Product context: ${targetProduct?.name || "unknown product"}.`,
+          ...backgroundInstruction,
           ...designatedSlotAnchorInstructions,
           ...variationInstructions,
           ...baseAnchorInstructions,
@@ -922,6 +927,7 @@ export async function executeImageGenerationForSlot({
               ? effectiveIdentityProfile?.must_not_change.join("; ")
               : ""
           }.`,
+          ...backgroundInstruction,
           ...designatedSlotAnchorInstructions,
           ...baseAnchorInstructions,
           ...variationInstructions,
@@ -951,6 +957,7 @@ export async function executeImageGenerationForSlot({
               ? effectiveIdentityProfile?.must_not_change.join("; ")
               : ""
           }.`,
+          ...backgroundInstruction,
           ...designatedSlotAnchorInstructions,
           ...baseAnchorInstructions,
           ...variationInstructions,

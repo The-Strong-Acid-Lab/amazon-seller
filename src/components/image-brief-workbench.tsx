@@ -442,11 +442,6 @@ export function ImageBriefWorkbench({
 
     const draft = getSlotDraft(slot.id, slot);
 
-    const fallbackReferenceImageId =
-      targetProduct
-        ? (referenceImagesByProduct.get(targetProduct.id) ?? [])[slot.order - 1]?.id ?? null
-        : null;
-
     return {
       slotKey: slot.id,
       order: slot.order,
@@ -460,7 +455,7 @@ export function ImageBriefWorkbench({
       complianceNotes: slot.complianceNotes,
       promptText: getPromptValue(slot),
       sourceBriefSlot: slot.sourceBriefSlot,
-      referenceImageId: slotReferenceBindings[slot.id] ?? fallbackReferenceImageId,
+      referenceImageId: slotReferenceBindings[slot.id] ?? null,
     };
   }
 
@@ -795,9 +790,18 @@ export function ImageBriefWorkbench({
   async function handleRebuildPrompt(slot: ImageStrategySlotPlan) {
     const draft = getSlotDraft(slot.id, slot);
     const currentPrompt = getPromptValue(slot);
+    const targetImages = targetProduct
+      ? (referenceImagesByProduct.get(targetProduct.id) ?? [])
+      : [];
+    const mainReferenceImageUrl = targetImages[0]?.image_url ?? "";
+    const boundReferenceId =
+      slotReferenceBindings[slot.id] ?? slot.referenceImageId ?? null;
+    const boundImage = boundReferenceId
+      ? targetImages.find((image) => image.id === boundReferenceId) ?? null
+      : null;
     const slotReferenceImageUrl =
-      targetProduct
-        ? (referenceImagesByProduct.get(targetProduct.id) ?? [])[slot.order - 1]?.image_url ?? ""
+      boundImage && boundImage.id !== targetImages[0]?.id
+        ? (boundImage.image_url ?? "")
         : "";
 
     setRebuildingPromptSlotId(slot.id);
@@ -822,7 +826,8 @@ export function ImageBriefWorkbench({
             visualDirection: slot.visualDirection,
             complianceNotes: slot.complianceNotes,
             currentPrompt,
-            referenceImageUrl: slotReferenceImageUrl,
+            mainReferenceImageUrl,
+            slotReferenceImageUrl,
             language: "zh-CN",
           }),
         },

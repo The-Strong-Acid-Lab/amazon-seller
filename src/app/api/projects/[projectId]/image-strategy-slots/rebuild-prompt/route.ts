@@ -19,7 +19,9 @@ type RebuildPromptPayload = {
   visualDirection?: string;
   complianceNotes?: string;
   currentPrompt?: string;
-  referenceImageUrl?: string;
+  mainReferenceImageUrl?: string;
+  slotReferenceImageUrl?: string;
+  competitorImageUrls?: string[];
   language?: string;
   force?: boolean;
 };
@@ -70,13 +72,27 @@ export async function POST(
     const visualDirection = sanitizeText(body.visualDirection);
     const complianceNotes = sanitizeText(body.complianceNotes);
     const currentPrompt = sanitizeText(body.currentPrompt);
-    const referenceImageUrl = sanitizeText(body.referenceImageUrl);
+    const mainReferenceImageUrl = sanitizeText(body.mainReferenceImageUrl);
+    const slotReferenceImageUrl = sanitizeText(body.slotReferenceImageUrl);
     const language = sanitizeText(body.language) || "zh-CN";
     const force = Boolean(body.force);
 
     if (!slotKey) {
       return NextResponse.json({ error: "slotKey is required." }, { status: 400 });
     }
+
+    const { data: competitorImages } = await supabase
+      .from("product_reference_images")
+      .select("image_url")
+      .eq("project_id", projectId)
+      .eq("role", "competitor")
+      .neq("reference_kind", "infographic_ignore")
+      .order("created_at", { ascending: false })
+      .limit(3);
+
+    const competitorImageUrls = (competitorImages ?? [])
+      .map((img: { image_url: string | null }) => img.image_url ?? "")
+      .filter(Boolean);
 
     const { data: activeRun, error: activeRunError } = await supabase
       .from("prompt_rebuild_runs")
@@ -181,7 +197,9 @@ export async function POST(
           visualDirection,
           complianceNotes,
           currentPrompt,
-          referenceImageUrl,
+          mainReferenceImageUrl,
+          slotReferenceImageUrl,
+          competitorImageUrls,
           language,
         },
       });

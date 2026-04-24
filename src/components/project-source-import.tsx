@@ -204,7 +204,7 @@ export function ProjectSourceImport({
           </div>
           <Input
             accept={ACCEPTED_FILE_TYPES}
-            className="cursor-pointer border-stone-200 bg-white file:mr-4 file:rounded-md file:bg-stone-100 file:px-3 file:py-1.5 hover:file:bg-stone-200"
+            className="cursor-pointer border-stone-200 bg-white file:mr-4 file:rounded-md file:bg-stone-100 file:px-3 file:py-1 hover:file:bg-stone-200"
             type="file"
             onChange={(event) => setFile(event.target.files?.[0] ?? null)}
           />

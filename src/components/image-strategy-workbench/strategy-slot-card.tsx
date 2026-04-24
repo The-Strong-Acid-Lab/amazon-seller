@@ -356,11 +356,11 @@ export function StrategySlotCard({
                 {slotAssets.length} 个版本
               </p>
             </div>
-            <div className="grid min-h-0 flex-1 gap-2 overflow-y-auto pr-1">
+            <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
               {slotAssets.map((asset) => (
                 <div
                   key={asset.id}
-                  className="flex h-20 cursor-pointer items-center justify-between gap-3 rounded-xl bg-stone-100 px-3 py-2 transition-colors hover:bg-stone-200/60"
+                  className="flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-stone-100 px-3 py-2 transition-colors hover:bg-stone-200/60"
                   onClick={() => setSelectedAssetId(asset.id)}
                 >
                   <div className="flex min-w-0 items-center gap-3">

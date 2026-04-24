@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 
+import { getSlotComplianceEn } from "@/lib/image-strategy";
 import { resolveProjectApiKey } from "@/lib/user-api-keys";
 
 export type RebuildPromptPayload = {
@@ -12,7 +13,9 @@ export type RebuildPromptPayload = {
   visualDirection?: string;
   complianceNotes?: string;
   currentPrompt?: string;
-  referenceImageUrl?: string;
+  mainReferenceImageUrl?: string;
+  slotReferenceImageUrl?: string;
+  competitorImageUrls?: string[];
   language?: string;
 };
 
@@ -188,7 +191,12 @@ export async function rebuildImageSlotPrompt({
   const visualDirection = sanitizeText(payload.visualDirection);
   const complianceNotes = sanitizeText(payload.complianceNotes);
   const currentPrompt = sanitizeText(payload.currentPrompt);
-  const referenceImageUrl = sanitizeText(payload.referenceImageUrl);
+  const mainReferenceImageUrl = sanitizeText(payload.mainReferenceImageUrl);
+  const slotReferenceImageUrl = sanitizeText(payload.slotReferenceImageUrl);
+  const competitorImageUrls = (payload.competitorImageUrls ?? [])
+    .map((url) => sanitizeText(url))
+    .filter(Boolean)
+    .slice(0, 3);
   const language = sanitizeText(payload.language) || "zh-CN";
 
   if (!slotKey) {
@@ -208,7 +216,11 @@ export async function rebuildImageSlotPrompt({
         role: "system",
         content: [
           "你是亚马逊商品图提示词重建器（含槽位匹配判断）。",
-          "任务：先判断“当前参考图是否匹配目标槽位”，再重建可直接用于生图的最终 Prompt。",
+          "任务：先判断「当前参考图是否匹配目标槽位」，再重建可直接用于生图的最终 Prompt。",
+          "图片说明（如有）：",
+          "  - 第 1 张图（必有）：商品主图 / Hero 图，用于理解商品整体外观、品类、结构和材质。这是商品身份的基准参考。",
+          "  - 第 2 张图（可选）：该槽位绑定的特定角度或细节图，用于理解此槽位要展示的具体局部。如果没有第 2 张图，则以第 1 张主图为唯一参考。",
+          "  - 第 3 张起（可选，标注为竞品参考图）：仅用于分析构图套路、画面布局、场景氛围、信息层级和光线风格。严禁从竞品图中提取商品本体特征、颜色、形态或细节写入 Prompt，只提炼视觉表达策略注入 Visual Direction。",
           "要求：",
           "1) 修复语法、标点、中英混杂和病句；",
           "2) 不改变原始业务意图和合规约束；",
@@ -238,21 +250,39 @@ export async function rebuildImageSlotPrompt({
               `Recommended On-Image Copy: ${recommendedOverlayCopy || "-"}`,
               `VOC / Evidence: ${evidence || "-"}`,
               `Visual Direction: ${visualDirection || "-"}`,
-              `Compliance Notes: ${complianceNotes || "-"}`,
+              `Compliance Notes: ${getSlotComplianceEn(slotKey) || complianceNotes || "-"}`,
               `Display Language: ${language}`,
               "",
               "当前Prompt（仅供参考，不要照抄错误）：",
               currentPrompt || "-",
             ].join("\n"),
           },
-          ...(referenceImageUrl
+          ...(mainReferenceImageUrl
             ? [
                 {
                   type: "image_url" as const,
-                  image_url: {
-                    url: referenceImageUrl,
-                  },
+                  image_url: { url: mainReferenceImageUrl },
                 },
+              ]
+            : []),
+          ...(slotReferenceImageUrl && slotReferenceImageUrl !== mainReferenceImageUrl
+            ? [
+                {
+                  type: "image_url" as const,
+                  image_url: { url: slotReferenceImageUrl },
+                },
+              ]
+            : []),
+          ...(competitorImageUrls.length > 0
+            ? [
+                {
+                  type: "text" as const,
+                  text: `以下 ${competitorImageUrls.length} 张为竞品参考图，仅用于构图/场景/视觉策略分析，不得用于商品身份描述：`,
+                },
+                ...competitorImageUrls.map((url) => ({
+                  type: "image_url" as const,
+                  image_url: { url },
+                })),
               ]
             : []),
         ],
@@ -297,7 +327,7 @@ export async function rebuildImageSlotPrompt({
             recommendedOverlayCopy,
             evidence,
             visualDirection,
-            complianceNotes,
+            complianceNotes: getSlotComplianceEn(slotKey) || complianceNotes,
             modelAdjustment: canonicalStructuredPrompt || rawRebuiltPrompt || mismatchNotes,
           });
 
