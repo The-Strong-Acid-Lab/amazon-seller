@@ -179,7 +179,7 @@ export type ProjectWorkspaceShellProps = {
 // ─── Step config ─────────────────────────────────────────────────────────────
 
 const STEPS: Array<{ key: StepKey; num: string; label: string }> = [
-  { key: "evidence", num: "01", label: "证据" },
+  { key: "evidence", num: "01", label: "依据" },
   { key: "insight", num: "02", label: "洞察" },
   { key: "strategy", num: "03", label: "策略" },
   { key: "listing", num: "04", label: "Listing" },
@@ -257,7 +257,7 @@ function getNextBanner(activeStep: StepKey, props: ProjectWorkspaceShellProps) {
     if (!report)
       return {
         title: "需要先完成分析",
-        sub: "回到「证据」步骤，点击开始分析。",
+        sub: "回到「依据」步骤，点击开始分析。",
         cta: null,
       };
     return {
@@ -270,7 +270,7 @@ function getNextBanner(activeStep: StepKey, props: ProjectWorkspaceShellProps) {
     if (!report)
       return {
         title: "需要先完成分析",
-        sub: "回到「证据」步骤，点击开始分析。",
+        sub: "回到「依据」步骤，点击开始分析。",
         cta: null,
       };
     return {
@@ -530,7 +530,7 @@ function EvidenceStep(props: ProjectWorkspaceShellProps) {
     <div className="grid gap-6">
       <StepHeading
         num="01"
-        label="证据"
+        label="依据"
         sub="上传评论、粘贴自家 Listing、加入竞品。所有结论都来自这里。"
       />
 
@@ -663,7 +663,7 @@ function EvidenceStep(props: ProjectWorkspaceShellProps) {
 function InsightStep({ report }: ProjectWorkspaceShellProps) {
   if (!report)
     return (
-      <LockedStep message="先完成「证据」步骤并运行分析，才能查看洞察。" />
+      <LockedStep message="先完成「依据」步骤并运行分析，才能查看洞察。" />
     );
   return (
     <div className="grid gap-6">
@@ -755,7 +755,7 @@ function InsightStep({ report }: ProjectWorkspaceShellProps) {
 function StrategyStep({ report }: ProjectWorkspaceShellProps) {
   if (!report)
     return (
-      <LockedStep message="先完成「证据」步骤并运行分析，才能查看策略。" />
+      <LockedStep message="先完成「依据」步骤并运行分析，才能查看策略。" />
     );
   const sorted = sortVocResponseItems(report.voc_response_matrix);
   return (

@@ -191,14 +191,15 @@ function buildPrompts({
     goal || "突出该槽位核心卖点。",
     "核心信息：",
     message || "体现产品价值点。",
-    "支撑证据：",
+    "支撑依据：",
     supportingProof || "基于评论中的高频诉求。",
     "建议图上文案（仅供后续排版参考，不要直接在图里渲染文字）：",
     recommendedOverlayCopy || "不强制叠字。",
     "视觉方向：",
     visualDirection || "简洁、可信、易读。",
     "合规限制：",
-    complianceNotes || "不要出现品牌 Logo、商标、夸大医疗承诺、误导性对比文案。",
+    complianceNotes ||
+      "不要出现品牌 Logo、商标、夸大医疗承诺、误导性对比文案。",
     "输出：一张高质量商品图草稿。",
   ].join("\n");
 

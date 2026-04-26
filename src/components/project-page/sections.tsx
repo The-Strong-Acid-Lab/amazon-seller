@@ -680,20 +680,39 @@ export function ImageBriefCard({
         {brief.length > 0 ? (
           <div className="grid gap-4">
             {brief.map((item) => (
-              <div key={`${item.slot}-${item.goal}`} className="rounded-2xl border border-stone-200 p-4">
+              <div
+                key={`${item.slot}-${item.goal}`}
+                className="rounded-2xl border border-stone-200 p-4"
+              >
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge className="rounded-full" variant="outline">
                     {item.slot}
                   </Badge>
                 </div>
-                <p className="mt-3 text-sm font-semibold text-stone-900">目标</p>
-                <p className="mt-2 text-sm leading-7 text-stone-700">{item.goal}</p>
-                <p className="mt-3 text-sm font-semibold text-stone-900">核心信息</p>
-                <p className="mt-2 text-sm leading-7 text-stone-700">{item.message}</p>
-                <p className="mt-3 text-sm font-semibold text-stone-900">支撑证据</p>
-                <p className="mt-2 text-sm leading-7 text-stone-700">{item.supporting_proof}</p>
-                <p className="mt-3 text-sm font-semibold text-stone-900">视觉方向</p>
-                <p className="mt-2 text-sm leading-7 text-stone-700">{item.visual_direction}</p>
+                <p className="mt-3 text-sm font-semibold text-stone-900">
+                  目标
+                </p>
+                <p className="mt-2 text-sm leading-7 text-stone-700">
+                  {item.goal}
+                </p>
+                <p className="mt-3 text-sm font-semibold text-stone-900">
+                  核心信息
+                </p>
+                <p className="mt-2 text-sm leading-7 text-stone-700">
+                  {item.message}
+                </p>
+                <p className="mt-3 text-sm font-semibold text-stone-900">
+                  支撑依据
+                </p>
+                <p className="mt-2 text-sm leading-7 text-stone-700">
+                  {item.supporting_proof}
+                </p>
+                <p className="mt-3 text-sm font-semibold text-stone-900">
+                  视觉方向
+                </p>
+                <p className="mt-2 text-sm leading-7 text-stone-700">
+                  {item.visual_direction}
+                </p>
               </div>
             ))}
           </div>
@@ -750,7 +769,8 @@ export function APlusBriefCard({
       <CardHeader>
         <CardTitle>A+ Brief</CardTitle>
         <CardDescription>
-          给 A+ 页面或品牌故事模块的内容 brief。不是直接出设计，而是先明确每个模块该承担什么转化任务。
+          给 A+ 页面或品牌故事模块的内容
+          brief。不是直接出设计，而是先明确每个模块该承担什么转化任务。
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 xl:grid-cols-2">
@@ -760,16 +780,19 @@ export function APlusBriefCard({
               key={`${item.module}-${item.goal}`}
               className="rounded-2xl border border-stone-200 p-4"
             >
-              <p className="text-base font-semibold text-stone-950">{item.module}</p>
+              <p className="text-base font-semibold text-stone-950">
+                {item.module}
+              </p>
               <p className="mt-3 text-sm leading-7 text-stone-700">
-                <span className="font-medium text-stone-900">目标:</span> {item.goal}
+                <span className="font-medium text-stone-900">目标:</span>{" "}
+                {item.goal}
               </p>
               <p className="mt-2 text-sm leading-7 text-stone-700">
                 <span className="font-medium text-stone-900">核心信息:</span>{" "}
                 {item.key_message}
               </p>
               <p className="mt-2 text-sm leading-7 text-stone-700">
-                <span className="font-medium text-stone-900">支撑证据:</span>{" "}
+                <span className="font-medium text-stone-900">支撑依据:</span>{" "}
                 {item.supporting_proof}
               </p>
               <p className="mt-2 text-sm leading-7 text-stone-700">

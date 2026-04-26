@@ -181,7 +181,6 @@ export function StrategySlotCard({
               </div>
             </div>
           ) : null}
-
         </div>
       </div>
 
@@ -378,7 +377,9 @@ export function StrategySlotCard({
                       )}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-stone-900">v{asset.version}</p>
+                      <p className="text-sm font-medium text-stone-900">
+                        v{asset.version}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -467,9 +468,7 @@ export function StrategySlotCard({
                     </p>
                   </div>
                   <div className="grid gap-1">
-                    <p className="text-xs font-medium text-stone-500">
-                      证据依据
-                    </p>
+                    <p className="text-xs font-medium text-stone-500">依据</p>
                     <p className="text-sm leading-6 text-stone-800">
                       {slot.evidence}
                     </p>
@@ -493,9 +492,7 @@ export function StrategySlotCard({
           <DialogHeader>
             <DialogTitle>
               图片详情
-              {selectedAsset
-                ? ` · v${selectedAsset.version}`
-                : ""}
+              {selectedAsset ? ` · v${selectedAsset.version}` : ""}
             </DialogTitle>
           </DialogHeader>
           {selectedAsset ? (
@@ -521,11 +518,11 @@ export function StrategySlotCard({
                   模型：{selectedAsset.model_name || "unknown"}
                 </p>
                 <div className="overflow-y-auto">
-                <pre className="whitespace-pre-wrap break-words text-xs leading-6 text-stone-800">
-                  {selectedAsset.prompt_en ||
-                    selectedAsset.prompt_zh ||
-                    "无 Prompt"}
-                </pre>
+                  <pre className="whitespace-pre-wrap break-words text-xs leading-6 text-stone-800">
+                    {selectedAsset.prompt_en ||
+                      selectedAsset.prompt_zh ||
+                      "无 Prompt"}
+                  </pre>
                 </div>
               </div>
             </div>
