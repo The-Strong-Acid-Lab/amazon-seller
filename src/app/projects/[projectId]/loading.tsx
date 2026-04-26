@@ -1,72 +1,69 @@
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-
 export default function ProjectLoading() {
   return (
-    <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-10">
-      <div className="mx-auto grid max-w-7xl gap-6">
-        <Card className="rounded-xl border border-[var(--page-border)] bg-white/80 px-6 py-6 shadow-[0_20px_70px_rgba(54,40,24,0.08)] sm:px-8">
-          <div className="grid gap-4">
-            <div className="h-4 w-28 rounded-full bg-stone-200" />
-            <div className="h-12 w-64 rounded-xl bg-stone-200" />
-            <div className="h-5 w-[28rem] max-w-full rounded-full bg-stone-100" />
+    <div className="min-h-screen" style={{ background: "var(--background)" }}>
+      {/* Sticky header skeleton */}
+      <div className="sticky top-0 z-20 border-b border-[var(--page-border)] bg-white/95">
+        {/* Project header */}
+        <div className="mx-auto max-w-7xl px-6 py-4 sm:px-8">
+          <div className="flex items-start justify-between gap-4">
+            <div className="grid gap-3">
+              <div className="h-3 w-24 rounded-full bg-stone-200" />
+              <div className="h-8 w-56 rounded-lg bg-stone-200" />
+              <div className="flex gap-3">
+                <div className="h-3 w-12 rounded-full bg-stone-100" />
+                <div className="h-3 w-20 rounded-full bg-stone-100" />
+                <div className="h-3 w-28 rounded-full bg-stone-100" />
+              </div>
+            </div>
+            <div className="h-9 w-24 rounded-lg bg-stone-200" />
           </div>
-        </Card>
+        </div>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="grid gap-6">
-            <LoadingBlock lines={5} />
-            <LoadingGrid />
-            <LoadingBlock lines={6} />
-            <LoadingBlock lines={6} />
-          </div>
-
-          <div className="grid gap-6">
-            <LoadingBlock lines={4} />
-            <LoadingBlock lines={5} />
+        {/* Step bar skeleton */}
+        <div className="mx-auto max-w-7xl px-6 sm:px-8">
+          <div className="grid grid-cols-6 pb-3 pt-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className="h-5 w-5 rounded-full bg-stone-200" />
+                <div className="grid gap-1">
+                  <div className="h-3 w-10 rounded-full bg-stone-200" />
+                  <div className="h-2 w-5 rounded-full bg-stone-100" />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
-    </main>
+
+      {/* Content skeleton */}
+      <div className="mx-auto max-w-7xl px-6 py-6 sm:px-8">
+        <div className="grid gap-6">
+          <div className="grid gap-4 xl:grid-cols-2">
+            <LoadingBlock lines={4} />
+            <LoadingBlock lines={4} />
+          </div>
+          <LoadingBlock lines={5} />
+          <LoadingBlock lines={3} />
+        </div>
+      </div>
+    </div>
   );
 }
 
 function LoadingBlock({ lines = 4 }: { lines?: number }) {
   return (
-    <Card className="rounded-xl border border-[var(--page-border)] bg-white/80">
-      <CardHeader className="space-y-3">
-        <div className="h-6 w-40 rounded-full bg-stone-200" />
-        <div className="h-4 w-64 rounded-full bg-stone-100" />
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        {Array.from({ length: lines }).map((_, index) => (
+    <div className="rounded-xl border border-[var(--page-border)] bg-white p-5">
+      <div className="mb-4 h-4 w-32 rounded-full bg-stone-200" />
+      <div className="grid gap-3">
+        {Array.from({ length: lines }).map((_, i) => (
           <div
-            key={index}
-            className={`h-4 rounded-full bg-stone-100 ${
-              index % 3 === 0 ? "w-full" : index % 3 === 1 ? "w-5/6" : "w-2/3"
+            key={i}
+            className={`h-3 rounded-full bg-stone-100 ${
+              i % 3 === 0 ? "w-full" : i % 3 === 1 ? "w-5/6" : "w-2/3"
             }`}
           />
         ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-function LoadingGrid() {
-  return (
-    <div className="grid gap-4 md:grid-cols-3">
-      {Array.from({ length: 3 }).map((_, index) => (
-        <Card
-          key={index}
-          className="rounded-xl border border-[var(--page-border)] bg-white/80"
-        >
-          <CardContent className="grid gap-3 p-6 mt-4">
-            <div className="h-4 w-20 rounded-full bg-stone-200" />
-            <div className="h-10 w-16 rounded-xl bg-stone-100" />
-            <div className="h-4 w-24 rounded-full bg-stone-100" />
-          </CardContent>
-        </Card>
-      ))}
+      </div>
     </div>
   );
 }
-
