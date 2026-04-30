@@ -182,11 +182,9 @@ function DeleteDialog({
 // ════════════════════════════════════════════════════════════════════════
 export function ProjectsList({
   projects,
-  canCreateProject,
   onCreateProject,
 }: {
   projects: ProjectListItem[];
-  canCreateProject?: boolean;
   onCreateProject?: () => void;
 }) {
   const router = useRouter();
@@ -486,7 +484,6 @@ export function ProjectsList({
           {/* New project tile */}
           {onCreateProject && (
             <button
-              disabled={!canCreateProject}
               onClick={onCreateProject}
               className="flex min-h-[220px] flex-col items-center justify-center gap-4 rounded-lg border border-dashed border-stone-300 bg-transparent text-stone-400 transition-colors hover:border-[var(--accent-blue)]/40 hover:bg-stone-50 hover:text-[var(--accent-blue)] disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -513,7 +510,6 @@ export function ProjectsList({
           </p>
           <Button
             className="mt-4"
-            disabled={!canCreateProject}
             onClick={onCreateProject}
           >
             + 新建项目

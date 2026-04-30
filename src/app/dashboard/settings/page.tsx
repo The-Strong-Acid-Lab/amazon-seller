@@ -19,7 +19,8 @@ export default async function DashboardSettingsPage() {
             个人 API Key
           </h2>
           <p className="mt-2 text-sm leading-7 text-[var(--page-muted)]">
-            保存后，项目分析和图片生成会优先读取你自己的 OpenAI / Gemini Key；没有保存时才回退到系统环境变量。
+            保存后，项目分析和图片生成会优先读取你自己的 OpenAI / Gemini
+            Key；没有保存时才回退到系统环境变量。
           </p>
           <div className="mt-6">
             <ApiKeySettingsForm initial={apiKeySettings} />
@@ -39,7 +40,7 @@ export default async function DashboardSettingsPage() {
               <p className="font-medium text-stone-900">OpenAI Key</p>
               <p className="mt-1">
                 {apiKeySettings.hasOpenAiKey
-                  ? `已保存，尾号 ${apiKeySettings.openAiLast4}`
+                  ? `sk-**********${apiKeySettings.openAiLast4}`
                   : "未保存"}
               </p>
             </div>
@@ -47,7 +48,7 @@ export default async function DashboardSettingsPage() {
               <p className="font-medium text-stone-900">Gemini Key</p>
               <p className="mt-1">
                 {apiKeySettings.hasGeminiKey
-                  ? `已保存，尾号 ${apiKeySettings.geminiLast4}`
+                  ? `AIza**********${apiKeySettings.geminiLast4}`
                   : "未保存"}
               </p>
             </div>

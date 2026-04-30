@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 
 import { ConsoleShell } from "@/components/console-shell";
 import { ImportWorkbench } from "@/components/import-workbench";
@@ -20,11 +19,9 @@ import {
 export function HomeConsole({
   projects,
   userEmail,
-  canCreateProject,
 }: {
   projects: ProjectListItem[];
   userEmail?: string | null;
-  canCreateProject: boolean;
 }) {
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
@@ -37,7 +34,6 @@ export function HomeConsole({
     <ConsoleShell
       actions={
         <Button
-          disabled={!canCreateProject}
           onClick={() => setShowCreateProject(true)}
           type="button"
         >
@@ -47,17 +43,6 @@ export function HomeConsole({
       title="我的项目"
       userEmail={userEmail}
     >
-      {/* ── API key warning ── */}
-      {!canCreateProject && (
-        <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span className="font-medium">⚠ 先到</span>
-          <Link className="font-semibold underline" href="/dashboard/settings">
-            Settings
-          </Link>
-          <span>保存你自己的 API Key，之后才能新建项目。</span>
-        </div>
-      )}
-
       {/* ── Stat strip ── */}
       <div className="mb-5 grid grid-cols-4 gap-px overflow-hidden rounded-lg border border-[var(--page-border)] bg-[var(--page-border)]">
         <StatCell
@@ -88,7 +73,6 @@ export function HomeConsole({
 
       {/* ── Projects list (handles its own filter bar + table/grid) ── */}
       <ProjectsList
-        canCreateProject={canCreateProject}
         onCreateProject={() => setShowCreateProject(true)}
         projects={projects}
       />

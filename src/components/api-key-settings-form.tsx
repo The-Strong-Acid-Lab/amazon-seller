@@ -62,7 +62,10 @@ export function ApiKeySettingsForm({
   return (
     <form className="grid gap-5" onSubmit={handleSubmit}>
       <div className="grid gap-2">
-        <label className="text-sm font-medium text-stone-900" htmlFor="openai-key">
+        <label
+          className="text-sm font-medium text-stone-900"
+          htmlFor="openai-key"
+        >
           OpenAI API Key
         </label>
         <Input
@@ -70,15 +73,18 @@ export function ApiKeySettingsForm({
           onChange={(event) => setOpenaiKey(event.target.value)}
           placeholder={
             initial.hasOpenAiKey
-              ? `已保存，尾号 ${initial.openAiLast4}`
-              : "sk-..."
+              ? `sk-**********${initial.openAiLast4}`
+              : "sk-**********"
           }
           value={openaiKey}
         />
       </div>
 
       <div className="grid gap-2">
-        <label className="text-sm font-medium text-stone-900" htmlFor="gemini-key">
+        <label
+          className="text-sm font-medium text-stone-900"
+          htmlFor="gemini-key"
+        >
           Gemini API Key
         </label>
         <Input
@@ -86,7 +92,7 @@ export function ApiKeySettingsForm({
           onChange={(event) => setGeminiKey(event.target.value)}
           placeholder={
             initial.hasGeminiKey
-              ? `已保存，尾号 ${initial.geminiLast4}`
+              ? `AIza**********${initial.geminiLast4}`
               : "AIza..."
           }
           value={geminiKey}
